@@ -42,3 +42,4 @@
 - v0.10.3 memory pass done (see PROGRESS). Next: user builds, reads `memory:` line in log / Settings > Troubleshooting on Windows; decide on software renderer.
 - v0.11.0 (see PROGRESS): software renderer default, page alignment, contrast tests. Next: user builds on Windows, compares Task Manager / Process Explorer and the Settings memory line for Processor vs Graphics card; report frame ms on a maximised window.
 - v0.12.0: profile export / import (see PROGRESS). Next: user builds on Windows; test Export / Import dialogs, import on a fresh %APPDATA% (or portable copy), then Save to keyboard.
+- Published to GitHub (see PROGRESS 2026-11-10 published). Local folder is not a git repo yet: link with `git init -b main`, `git remote add origin …`, `git fetch origin`, `git reset origin/main` (keeps files), `git checkout -- docs/screenshots`. Commit as `228260327+ripDZL@users.noreply.github.com`, never the account email.
