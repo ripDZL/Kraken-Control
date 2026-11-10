@@ -1,0 +1,49 @@
+[package]
+name = "kraken-control"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Kraken Control: native control app for DrunkDeer A75 Master/Ultra"
+
+[[bin]]
+name = "kraken-control"
+path = "src/main.rs"
+
+[features]
+# Type-check the Win32 HID code on non-Windows hosts (cargo check only; never links).
+check-win = []
+
+[dependencies]
+dd-proto = { path = "../crates/dd-proto" }
+# Software renderer (soft.rs): window + input without eframe's OpenGL. Same versions eframe uses.
+egui-winit = { version = "=0.31.1", default-features = false, features = ["clipboard"] }
+winit = { version = "=0.30.13", default-features = false, features = ["rwh_06"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Devices_HumanInterfaceDevice",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_IO",
+    "Win32_System_ProcessStatus",
+    "Win32_System_Threading",
+    "Win32_Security",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Registry",
+    "Win32_Graphics_Gdi",
+    "Win32_UI_Accessibility",
+    "Win32_UI_Controls_Dialogs",
+    "Win32_UI_HiDpi",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[target.'cfg(windows)'.dependencies]
+eframe = { version = "=0.31.1", default-features = false, features = ["glow"] }
+softbuffer = { version = "=0.4.6", default-features = false }
+
+[target.'cfg(not(windows))'.dependencies]
+eframe = { version = "=0.31.1", default-features = false, features = ["glow", "x11"] }
+softbuffer = { version = "=0.4.6", default-features = false, features = ["x11", "x11-dlopen"] }

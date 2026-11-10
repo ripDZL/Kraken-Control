@@ -1,0 +1,727 @@
+{
+ "source": "beta.drunkdeer-antler.com index.exKUY8vl.js (saved 2026-11-07)",
+ "model": "A75 Ultra, type bytes 0b 04 04, TypeCode 756",
+ "encoding": "sendRemapKeyData: 6-byte entry per slot, fixed stride. type0 [slot,cmd,0,code,0,0]; type1/2 [slot,cmd,code,0,0,0]; type3 [slot,cmd,0,0,0,0]; type4 [slot,0xF8,rtp,group,pos,rtMode]; cmd==0 -> 6 zero bytes",
+ "layers": {
+  "default": [
+   {
+    "slot": 0,
+    "cmd": 252,
+    "type": 0,
+    "code": 41,
+    "label": "ESC"
+   },
+   {
+    "slot": 2,
+    "cmd": 252,
+    "type": 0,
+    "code": 58,
+    "label": "F1"
+   },
+   {
+    "slot": 3,
+    "cmd": 252,
+    "type": 0,
+    "code": 59,
+    "label": "F2"
+   },
+   {
+    "slot": 4,
+    "cmd": 252,
+    "type": 0,
+    "code": 60,
+    "label": "F3"
+   },
+   {
+    "slot": 5,
+    "cmd": 252,
+    "type": 0,
+    "code": 61,
+    "label": "F4"
+   },
+   {
+    "slot": 6,
+    "cmd": 252,
+    "type": 0,
+    "code": 62,
+    "label": "F5"
+   },
+   {
+    "slot": 7,
+    "cmd": 252,
+    "type": 0,
+    "code": 63,
+    "label": "F6"
+   },
+   {
+    "slot": 8,
+    "cmd": 252,
+    "type": 0,
+    "code": 64,
+    "label": "F7"
+   },
+   {
+    "slot": 9,
+    "cmd": 252,
+    "type": 0,
+    "code": 65,
+    "label": "F8"
+   },
+   {
+    "slot": 10,
+    "cmd": 252,
+    "type": 0,
+    "code": 66,
+    "label": "F9"
+   },
+   {
+    "slot": 11,
+    "cmd": 252,
+    "type": 0,
+    "code": 67,
+    "label": "F10"
+   },
+   {
+    "slot": 12,
+    "cmd": 252,
+    "type": 0,
+    "code": 68,
+    "label": "F11"
+   },
+   {
+    "slot": 13,
+    "cmd": 252,
+    "type": 0,
+    "code": 69,
+    "label": "F12"
+   },
+   {
+    "slot": 14,
+    "cmd": 252,
+    "type": 0,
+    "code": 76,
+    "label": "Del"
+   },
+   {
+    "slot": 21,
+    "cmd": 252,
+    "type": 0,
+    "code": 53,
+    "label": "`~"
+   },
+   {
+    "slot": 22,
+    "cmd": 252,
+    "type": 0,
+    "code": 30,
+    "label": "1!"
+   },
+   {
+    "slot": 23,
+    "cmd": 252,
+    "type": 0,
+    "code": 31,
+    "label": "2@"
+   },
+   {
+    "slot": 24,
+    "cmd": 252,
+    "type": 0,
+    "code": 32,
+    "label": "3#"
+   },
+   {
+    "slot": 25,
+    "cmd": 252,
+    "type": 0,
+    "code": 33,
+    "label": "4$"
+   },
+   {
+    "slot": 26,
+    "cmd": 252,
+    "type": 0,
+    "code": 34,
+    "label": "5%"
+   },
+   {
+    "slot": 27,
+    "cmd": 252,
+    "type": 0,
+    "code": 35,
+    "label": "6^"
+   },
+   {
+    "slot": 28,
+    "cmd": 252,
+    "type": 0,
+    "code": 36,
+    "label": "7&"
+   },
+   {
+    "slot": 29,
+    "cmd": 252,
+    "type": 0,
+    "code": 37,
+    "label": "8*"
+   },
+   {
+    "slot": 30,
+    "cmd": 252,
+    "type": 0,
+    "code": 38,
+    "label": "9("
+   },
+   {
+    "slot": 31,
+    "cmd": 252,
+    "type": 0,
+    "code": 39,
+    "label": "0)"
+   },
+   {
+    "slot": 32,
+    "cmd": 252,
+    "type": 0,
+    "code": 45,
+    "label": "-_"
+   },
+   {
+    "slot": 33,
+    "cmd": 252,
+    "type": 0,
+    "code": 46,
+    "label": "=+"
+   },
+   {
+    "slot": 34,
+    "cmd": 252,
+    "type": 0,
+    "code": 42,
+    "label": "Back"
+   },
+   {
+    "slot": 36,
+    "cmd": 252,
+    "type": 0,
+    "code": 74,
+    "label": "Home"
+   },
+   {
+    "slot": 42,
+    "cmd": 252,
+    "type": 0,
+    "code": 43,
+    "label": "TAB"
+   },
+   {
+    "slot": 43,
+    "cmd": 252,
+    "type": 0,
+    "code": 20,
+    "label": "Q"
+   },
+   {
+    "slot": 44,
+    "cmd": 252,
+    "type": 0,
+    "code": 26,
+    "label": "W"
+   },
+   {
+    "slot": 45,
+    "cmd": 252,
+    "type": 0,
+    "code": 8,
+    "label": "E"
+   },
+   {
+    "slot": 46,
+    "cmd": 252,
+    "type": 0,
+    "code": 21,
+    "label": "R"
+   },
+   {
+    "slot": 47,
+    "cmd": 252,
+    "type": 0,
+    "code": 23,
+    "label": "T"
+   },
+   {
+    "slot": 48,
+    "cmd": 252,
+    "type": 0,
+    "code": 28,
+    "label": "Y"
+   },
+   {
+    "slot": 49,
+    "cmd": 252,
+    "type": 0,
+    "code": 24,
+    "label": "U"
+   },
+   {
+    "slot": 50,
+    "cmd": 252,
+    "type": 0,
+    "code": 12,
+    "label": "I"
+   },
+   {
+    "slot": 51,
+    "cmd": 252,
+    "type": 0,
+    "code": 18,
+    "label": "O"
+   },
+   {
+    "slot": 52,
+    "cmd": 252,
+    "type": 0,
+    "code": 19,
+    "label": "P"
+   },
+   {
+    "slot": 53,
+    "cmd": 252,
+    "type": 0,
+    "code": 47,
+    "label": "[{"
+   },
+   {
+    "slot": 54,
+    "cmd": 252,
+    "type": 0,
+    "code": 48,
+    "label": "]}"
+   },
+   {
+    "slot": 55,
+    "cmd": 252,
+    "type": 0,
+    "code": 49,
+    "label": "\\|"
+   },
+   {
+    "slot": 56,
+    "cmd": 252,
+    "type": 0,
+    "code": 0,
+    "label": ""
+   },
+   {
+    "slot": 57,
+    "cmd": 252,
+    "type": 0,
+    "code": 75,
+    "label": "PgUp"
+   },
+   {
+    "slot": 63,
+    "cmd": 252,
+    "type": 0,
+    "code": 57,
+    "label": "CAPS"
+   },
+   {
+    "slot": 64,
+    "cmd": 252,
+    "type": 0,
+    "code": 4,
+    "label": "A"
+   },
+   {
+    "slot": 65,
+    "cmd": 252,
+    "type": 0,
+    "code": 22,
+    "label": "S"
+   },
+   {
+    "slot": 66,
+    "cmd": 252,
+    "type": 0,
+    "code": 7,
+    "label": "D"
+   },
+   {
+    "slot": 67,
+    "cmd": 252,
+    "type": 0,
+    "code": 9,
+    "label": "F"
+   },
+   {
+    "slot": 68,
+    "cmd": 252,
+    "type": 0,
+    "code": 10,
+    "label": "G"
+   },
+   {
+    "slot": 69,
+    "cmd": 252,
+    "type": 0,
+    "code": 11,
+    "label": "H"
+   },
+   {
+    "slot": 70,
+    "cmd": 252,
+    "type": 0,
+    "code": 13,
+    "label": "J"
+   },
+   {
+    "slot": 71,
+    "cmd": 252,
+    "type": 0,
+    "code": 14,
+    "label": "K"
+   },
+   {
+    "slot": 72,
+    "cmd": 252,
+    "type": 0,
+    "code": 15,
+    "label": "L"
+   },
+   {
+    "slot": 73,
+    "cmd": 252,
+    "type": 0,
+    "code": 51,
+    "label": ";:"
+   },
+   {
+    "slot": 74,
+    "cmd": 252,
+    "type": 0,
+    "code": 52,
+    "label": "'\""
+   },
+   {
+    "slot": 76,
+    "cmd": 252,
+    "type": 0,
+    "code": 40,
+    "label": "Enter"
+   },
+   {
+    "slot": 78,
+    "cmd": 252,
+    "type": 0,
+    "code": 78,
+    "label": "PgDn"
+   },
+   {
+    "slot": 84,
+    "cmd": 252,
+    "type": 1,
+    "code": 2,
+    "label": "Shift"
+   },
+   {
+    "slot": 86,
+    "cmd": 252,
+    "type": 0,
+    "code": 29,
+    "label": "Z"
+   },
+   {
+    "slot": 87,
+    "cmd": 252,
+    "type": 0,
+    "code": 27,
+    "label": "X"
+   },
+   {
+    "slot": 88,
+    "cmd": 252,
+    "type": 0,
+    "code": 6,
+    "label": "C"
+   },
+   {
+    "slot": 89,
+    "cmd": 252,
+    "type": 0,
+    "code": 25,
+    "label": "V"
+   },
+   {
+    "slot": 90,
+    "cmd": 252,
+    "type": 0,
+    "code": 5,
+    "label": "B"
+   },
+   {
+    "slot": 91,
+    "cmd": 252,
+    "type": 0,
+    "code": 17,
+    "label": "N"
+   },
+   {
+    "slot": 92,
+    "cmd": 252,
+    "type": 0,
+    "code": 16,
+    "label": "M"
+   },
+   {
+    "slot": 93,
+    "cmd": 252,
+    "type": 0,
+    "code": 54,
+    "label": ",<"
+   },
+   {
+    "slot": 94,
+    "cmd": 252,
+    "type": 0,
+    "code": 55,
+    "label": ".>"
+   },
+   {
+    "slot": 95,
+    "cmd": 252,
+    "type": 0,
+    "code": 56,
+    "label": "/?"
+   },
+   {
+    "slot": 97,
+    "cmd": 252,
+    "type": 1,
+    "code": 32,
+    "label": "Shift"
+   },
+   {
+    "slot": 98,
+    "cmd": 252,
+    "type": 0,
+    "code": 82,
+    "label": "ARR_UP"
+   },
+   {
+    "slot": 99,
+    "cmd": 252,
+    "type": 0,
+    "code": 77,
+    "label": "End"
+   },
+   {
+    "slot": 105,
+    "cmd": 252,
+    "type": 1,
+    "code": 1,
+    "label": "Ctrl"
+   },
+   {
+    "slot": 106,
+    "cmd": 252,
+    "type": 0,
+    "code": 227,
+    "label": "Win"
+   },
+   {
+    "slot": 107,
+    "cmd": 252,
+    "type": 1,
+    "code": 4,
+    "label": "Alt"
+   },
+   {
+    "slot": 111,
+    "cmd": 252,
+    "type": 0,
+    "code": 44,
+    "label": "SPACE"
+   },
+   {
+    "slot": 115,
+    "cmd": 252,
+    "type": 1,
+    "code": 64,
+    "label": "Alt"
+   },
+   {
+    "slot": 116,
+    "cmd": 255,
+    "type": 3,
+    "code": 255,
+    "label": "Fn"
+   },
+   {
+    "slot": 117,
+    "cmd": 254,
+    "type": 3,
+    "code": 254,
+    "label": "Fn2"
+   },
+   {
+    "slot": 119,
+    "cmd": 252,
+    "type": 0,
+    "code": 80,
+    "label": "ARR_L"
+   },
+   {
+    "slot": 120,
+    "cmd": 252,
+    "type": 0,
+    "code": 81,
+    "label": "ARR_DW"
+   },
+   {
+    "slot": 121,
+    "cmd": 252,
+    "type": 0,
+    "code": 79,
+    "label": "ARR_R"
+   }
+  ],
+  "fn1": [
+   {
+    "slot": 106,
+    "cmd": 251,
+    "type": 2,
+    "code": 16,
+    "label": "Win"
+   }
+  ],
+  "fn2": [
+   {
+    "slot": 0,
+    "cmd": 253,
+    "type": 2,
+    "code": 5,
+    "label": "reset"
+   },
+   {
+    "slot": 22,
+    "cmd": 253,
+    "type": 2,
+    "code": 9,
+    "label": "rtm"
+   },
+   {
+    "slot": 23,
+    "cmd": 253,
+    "type": 2,
+    "code": 10,
+    "label": "rtm"
+   },
+   {
+    "slot": 24,
+    "cmd": 253,
+    "type": 2,
+    "code": 11,
+    "label": "rtm"
+   },
+   {
+    "slot": 25,
+    "cmd": 253,
+    "type": 2,
+    "code": 12,
+    "label": "rtm"
+   },
+   {
+    "slot": 26,
+    "cmd": 253,
+    "type": 2,
+    "code": 13,
+    "label": "rtm"
+   },
+   {
+    "slot": 42,
+    "cmd": 251,
+    "type": 2,
+    "code": 9,
+    "label": "led color loop"
+   },
+   {
+    "slot": 43,
+    "cmd": 253,
+    "type": 2,
+    "code": 6,
+    "label": "rdt"
+   },
+   {
+    "slot": 45,
+    "cmd": 253,
+    "type": 2,
+    "code": 48,
+    "label": "hardcore"
+   },
+   {
+    "slot": 65,
+    "cmd": 253,
+    "type": 2,
+    "code": 50,
+    "label": "standard"
+   },
+   {
+    "slot": 71,
+    "cmd": 253,
+    "type": 2,
+    "code": 32,
+    "label": "rt"
+   },
+   {
+    "slot": 86,
+    "cmd": 253,
+    "type": 2,
+    "code": 7,
+    "label": "lw"
+   },
+   {
+    "slot": 88,
+    "cmd": 253,
+    "type": 2,
+    "code": 49,
+    "label": "competitive"
+   },
+   {
+    "slot": 92,
+    "cmd": 253,
+    "type": 2,
+    "code": 14,
+    "label": "rtm"
+   },
+   {
+    "slot": 98,
+    "cmd": 251,
+    "type": 2,
+    "code": 4,
+    "label": "led lumi inc"
+   },
+   {
+    "slot": 119,
+    "cmd": 251,
+    "type": 2,
+    "code": 2,
+    "label": "led mode prev"
+   },
+   {
+    "slot": 120,
+    "cmd": 251,
+    "type": 2,
+    "code": 5,
+    "label": "led lumi dec"
+   },
+   {
+    "slot": 121,
+    "cmd": 251,
+    "type": 2,
+    "code": 1,
+    "label": "led mode next"
+   }
+  ]
+ }
+}

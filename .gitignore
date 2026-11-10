@@ -1,0 +1,7 @@
+/target
+/dist
+*.log
+# demo / test data folders and exported profiles
+/KrakenControl/
+/data/
+Kraken Control - *.json
