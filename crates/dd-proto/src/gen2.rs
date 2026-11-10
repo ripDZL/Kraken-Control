@@ -340,7 +340,7 @@ pub fn max_actuation_mm(t: &Trigger) -> f32 {
 }
 
 pub fn parse_triggers(data: &[u8]) -> Vec<Trigger> {
-    data.chunks_exact(TRIGGER_BYTES).take(KEYS).map(|c| Trigger(c.try_into().unwrap())).collect()
+    data.as_chunks::<TRIGGER_BYTES>().0.iter().take(KEYS).map(|c| Trigger(*c)).collect()
 }
 
 pub fn encode_triggers(t: &[Trigger]) -> Vec<u8> {
@@ -395,7 +395,7 @@ impl Action {
 }
 
 pub fn parse_keymap(data: &[u8]) -> Vec<Action> {
-    data.chunks_exact(3).take(KEYS).map(Action::from_bytes).collect()
+    data.as_chunks::<3>().0.iter().take(KEYS).map(|c| Action::from_bytes(c.as_slice())).collect()
 }
 
 /// 128 × 3 bytes. Slots past the matrix hold filler (`F0+layer` ×3); they are
@@ -405,7 +405,7 @@ pub fn encode_keymap(actions: &[Action]) -> Vec<u8> {
 }
 
 pub fn parse_colors(data: &[u8]) -> Vec<[u8; 3]> {
-    data.chunks_exact(3).take(KEYS).map(|c| [c[0], c[1], c[2]]).collect()
+    data.as_chunks::<3>().0.iter().take(KEYS).copied().collect()
 }
 
 pub fn encode_colors(colors: &[[u8; 3]]) -> Vec<u8> {
@@ -576,9 +576,14 @@ const PICKER_SKIP_FUNCTIONS: &[u8] = &[0, 7, 8, 16, 17, 18, 19, 21, 29, 31, 49, 
 pub fn picker() -> &'static [(&'static str, Vec<PickItem>)] {
     static P: OnceLock<Vec<(&'static str, Vec<PickItem>)>> = OnceLock::new();
     P.get_or_init(|| {
-        let key = |c: u8| PickItem { label: basic_name(c).unwrap_or_default(), action: Action { kind: kind::KEY, code1: 0, code2: c } };
-        let range = |r: &[std::ops::RangeInclusive<u8>]| -> Vec<PickItem> { r.iter().cloned().flatten().filter(|c| basic_name(*c).is_some()).map(key).collect() };
-        let mut letters: Vec<PickItem> = range(&[4..=29]);
+        // Basic keys with a name in the official table, in code order.
+        fn keys(codes: impl IntoIterator<Item = u8>) -> Vec<PickItem> {
+            codes
+                .into_iter()
+                .filter_map(|c| basic_name(c).map(|label| PickItem { label, action: Action { kind: kind::KEY, code1: 0, code2: c } }))
+                .collect()
+        }
+        let mut letters: Vec<PickItem> = keys(4..=29);
         letters.sort_by(|a, b| a.label.cmp(&b.label));
         let mods = ["LCtrl", "LShift", "LAlt", "LWin", "RCtrl", "RShift", "RAlt", "RWin"]
             .iter()
@@ -598,12 +603,12 @@ pub fn picker() -> &'static [(&'static str, Vec<PickItem>)] {
         let mouse = data().mouse.iter().map(|m| PickItem { label: m.3.clone(), action: Action { kind: m.0, code1: m.1, code2: m.2 } }).collect();
         vec![
             ("Letters", letters),
-            ("Numbers & symbols", range(&[30..=39, 45..=49, 51..=56])),
-            ("Editing & navigation", range(&[40..=44, 57..=57, 70..=82, 101..=101])),
-            ("F-keys", range(&[58..=69, 104..=115])),
+            ("Numbers & symbols", keys([30..=39, 45..=49, 51..=56].into_iter().flatten())),
+            ("Editing & navigation", keys([40..=44, 57..=57, 70..=82, 101..=101].into_iter().flatten())),
+            ("F-keys", keys([58..=69, 104..=115].into_iter().flatten())),
             ("Modifiers", mods),
             ("Layers & keyboard", functions),
-            ("Numpad", range(&[83..=99])),
+            ("Numpad", keys(83..=99)),
             ("Media", media),
             ("Mouse", mouse),
         ]

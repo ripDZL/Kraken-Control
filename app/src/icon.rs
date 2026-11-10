@@ -41,7 +41,7 @@ pub fn rgba(size: u32) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(n * n * 4);
     for y in 0..n {
         let row = 40 + (n - 1 - y) * n * 4; // DIB rows are bottom-up BGRA
-        for px in d[row..row + n * 4].chunks_exact(4) {
+        for px in d[row..row + n * 4].as_chunks::<4>().0 {
             out.extend_from_slice(&[px[2], px[1], px[0], px[3]]);
         }
     }

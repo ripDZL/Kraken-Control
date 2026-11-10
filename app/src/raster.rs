@@ -96,7 +96,7 @@ impl Raster {
                 continue;
             }
             let tex = self.textures.get(&mesh.texture_id);
-            for t in mesh.indices.chunks_exact(3) {
+            for t in mesh.indices.as_chunks::<3>().0 {
                 let v = |i: u32| mesh.vertices.get(i as usize);
                 if let (Some(a), Some(b), Some(c)) = (v(t[0]), v(t[1]), v(t[2])) {
                     triangle(band, width, y0 as i32, &clip, ppp, [a, b, c], tex);

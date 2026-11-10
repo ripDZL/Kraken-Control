@@ -140,8 +140,8 @@ impl TravelReadback {
         if reply.len() < PAYLOAD_LEN || reply[0] != 0xFD || reply[1] != kind.reply_sub() {
             return false;
         }
-        for pair in reply[3..PAYLOAD_LEN].chunks_exact(2) {
-            self.values.push(u16::from_le_bytes([pair[0], pair[1]]));
+        for pair in reply[3..PAYLOAD_LEN].as_chunks::<2>().0 {
+            self.values.push(u16::from_le_bytes(*pair));
         }
         true
     }
