@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/res/kraken.svg" width="128" height="128" alt="Kraken Control icon">
+  <img src="app/res/kraken.svg" width="512 height="512" alt="Kraken Control icon">
 </p>
 
 <h1 align="center">Kraken Control</h1>
