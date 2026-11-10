@@ -14,7 +14,7 @@
 - State: `store::data_dir()` = `<exe dir>\data` if a file `portable` sits next to the exe (portable copy; legacy migration skipped), else `%APPDATA%\KrakenControl\` (migrated from `DeerControl` on start) — `state.json` (keymaps, profiles, settings), `agent.json` (per-app rules), `log.txt`.
 - Autostart: HKCU Run value `KrakenControl` = `"<exe>" --agent` (legacy `DeerControl` value migrated).
 - Named objects: mutexes `Local\KrakenControlHid|Ui|Agent`, agent window class `KrakenControlAgent`, UI title "Kraken Control".
-- Icon: user-supplied `app/res/kraken.png` -> `kraken.ico`; exe icon + VERSIONINFO via `app/build.rs` (.res written directly, MSVC only).
+- Icon: user-supplied `app/res/kraken.png` -> `kraken.ico`; vector source `app/res/kraken.svg` (user's art, cropped to the tile; shown at top of README); exe icon + VERSIONINFO via `app/build.rs` (.res written directly, MSVC only).
 
 ## Protocol essentials (see docs/protocol-a75-master-ultra.md)
 - HID: VID 0x352D, usage page 0xFF00, output report ID 4, 63-byte payload, one request in flight, reply first byte == request first byte.

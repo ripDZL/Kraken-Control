@@ -1,4 +1,8 @@
-# Kraken Control
+<p align="center">
+  <img src="app/res/kraken.svg" width="128" height="128" alt="Kraken Control icon">
+</p>
+
+<h1 align="center">Kraken Control</h1>
 
 A small, native Windows app for DrunkDeer A75 keyboards. It does what the
 DrunkDeer web driver does — key travel, Rapid Trigger, remapping, lighting,
