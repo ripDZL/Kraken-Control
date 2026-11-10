@@ -10,7 +10,7 @@
 - egui/eframe `=0.31.1`, `glow` renderer, default-features off. NO Tauri, no WebView2.
 - HID: raw Win32 via `windows-sys 0.59` (SetupAPI + overlapped ReadFile/WriteFile). No hidapi/C deps.
 - Workspace: `crates/dd-proto` (pure protocol, tests), `app` (package/bin `kraken-control`: UI by default, `--agent` = tray mode without window/GL).
-- Release profile: opt-level s, lto, codegen-units 1, panic abort, strip -> ~4 MB (Linux measured).
+- Release profile: opt-level s, lto, codegen-units 1, panic abort, strip -> ~4 MB Linux, 3.1 MB Windows static-CRT exe (v0.12.0 release).
 - State: `store::data_dir()` = `<exe dir>\data` if a file `portable` sits next to the exe (portable copy; legacy migration skipped), else `%APPDATA%\KrakenControl\` (migrated from `DeerControl` on start) — `state.json` (keymaps, profiles, settings), `agent.json` (per-app rules), `log.txt`.
 - Autostart: HKCU Run value `KrakenControl` = `"<exe>" --agent` (legacy `DeerControl` value migrated).
 - Named objects: mutexes `Local\KrakenControlHid|Ui|Agent`, agent window class `KrakenControlAgent`, UI title "Kraken Control".

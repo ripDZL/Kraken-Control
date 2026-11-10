@@ -1,0 +1,44 @@
+name: Bug report
+description: Something in Kraken Control doesn't work as expected.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. The log file helps most: it's `log.txt` in the `data` folder next to the exe (portable), or in `%APPDATA%\KrakenControl\`.
+  - type: dropdown
+    id: keyboard
+    attributes:
+      label: Keyboard
+      options:
+        - A75 Master
+        - A75 Ultra (original)
+        - A75 Ultra (2025)
+        - Other DrunkDeer model
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Kraken Control version
+      description: Shown at the bottom of the sidebar.
+      placeholder: "0.12.0"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: Windows 11 24H2
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log
+      description: Drag `log.txt` here. If asked, tick "Log packets (hex)" in Settings, repeat the steps, then attach the new log.

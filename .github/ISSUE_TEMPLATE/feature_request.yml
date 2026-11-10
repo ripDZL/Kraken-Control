@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest something Kraken Control should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What would you like?
+      description: Describe what you want to do and why.
+    validations:
+      required: true
+  - type: dropdown
+    id: keyboard
+    attributes:
+      label: Keyboard
+      multiple: true
+      options:
+        - A75 Master
+        - A75 Ultra (original)
+        - A75 Ultra (2025)
+        - Other DrunkDeer model
+  - type: dropdown
+    id: official
+    attributes:
+      label: Can the official DrunkDeer driver do this?
+      options:
+        - "Yes"
+        - "No"
+        - Not sure

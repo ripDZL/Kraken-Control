@@ -4,15 +4,32 @@
 
 <h1 align="center">Kraken Control</h1>
 
-A small, native Windows app for DrunkDeer A75 keyboards. It does what the
-DrunkDeer web driver does — key travel, Rapid Trigger, remapping, lighting,
-profiles — without a browser, .NET or a WebView. The release build is a
-single ~4 MB exe.
+<p align="center">
+  Native Windows control app for DrunkDeer A75 keyboards.<br>
+  Key travel, Rapid Trigger, remapping, lighting and profiles, without the browser.
+</p>
 
-Kraken Control is an unofficial project. It is not made by or affiliated with
-DrunkDeer.
+<p align="center">
+  <a href="https://github.com/ripDZL/Kraken-Control/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/ripDZL/Kraken-Control?include_prereleases&sort=semver&label=release&color=3CC8B4"></a>
+  <a href="https://github.com/ripDZL/Kraken-Control/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/ripDZL/Kraken-Control/total?color=3CC8B4"></a>
+  <a href="https://github.com/ripDZL/Kraken-Control/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/ripDZL/Kraken-Control/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="MIT licence" src="https://img.shields.io/github/license/ripDZL/Kraken-Control"></a>
+  <img alt="Windows 10 and 11" src="https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4">
+</p>
+
+<p align="center">
+  <a href="https://github.com/ripDZL/Kraken-Control/releases"><b>Download</b></a> &nbsp;|&nbsp;
+  <a href="#features">Features</a> &nbsp;|&nbsp;
+  <a href="#safety">Safety</a> &nbsp;|&nbsp;
+  <a href="#build">Build from source</a> &nbsp;|&nbsp;
+  <a href="CHANGELOG.md">Changelog</a>
+</p>
 
 ![Performance page, Dark Grey theme](docs/screenshots/performance.png)
+
+Kraken Control does what the DrunkDeer web driver does in a single ~3 MB exe:
+no browser, no .NET, no WebView, nothing to install. It is an unofficial
+project, not made by or affiliated with DrunkDeer.
 
 ## Supported keyboards
 
@@ -64,7 +81,20 @@ product ID.
 - Polling rate, tick rate, anti-shake, Adaptive Stable, Win / Alt+Tab /
   Alt+F4 locks.
 
-![Lighting page on the 2025 A75 Ultra, Black-Plumb theme](docs/screenshots/lighting-gen2-plumb.png)
+## Screenshots
+
+<table>
+  <tr>
+    <td width="33%"><img src="docs/screenshots/keymap.png" alt="Keymap page"></td>
+    <td width="33%"><img src="docs/screenshots/advanced-gen2.png" alt="Advanced keys page on the 2025 A75 Ultra"></td>
+    <td width="33%"><img src="docs/screenshots/lighting-gen2-plumb.png" alt="Lighting page in the Black-Plumb theme"></td>
+  </tr>
+  <tr>
+    <td align="center">Keymap</td>
+    <td align="center">Advanced keys (A75 Ultra 2025)</td>
+    <td align="center">Lighting, Black-Plumb theme</td>
+  </tr>
+</table>
 
 ## Safety
 
@@ -83,7 +113,7 @@ the official driver's Remap › Reset all keys.
 ## Install
 
 Download `KrakenControl-<version>-portable.zip` from
-[Releases](https://github.com/ripDZL/Kraken-Control/releases/latest), unzip it
+[Releases](https://github.com/ripDZL/Kraken-Control/releases), unzip it
 somewhere you can write to (Desktop or Documents, not Program Files) and run
 `kraken-control.exe`. Nothing is installed; settings stay in the `data` folder
 next to the exe.
@@ -162,6 +192,12 @@ interoperability.
   and [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) (SIL OFL 1.1);
   symbol glyphs from Hack (MIT / Bitstream Vera) and emoji-icon-font (MIT).
   Licence texts are in `app/res/fonts/`.
+
+## Reporting problems and contributing
+
+- Bugs and requests: [open an issue](https://github.com/ripDZL/Kraken-Control/issues/new/choose). For bugs, attach
+  `log.txt` (in `data\` next to the exe, or `%APPDATA%\KrakenControl\`).
+- Code: see [CONTRIBUTING.md](CONTRIBUTING.md). Security issues: see [SECURITY.md](SECURITY.md).
 
 ## Licence
 
