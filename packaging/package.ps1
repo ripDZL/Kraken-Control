@@ -1,7 +1,7 @@
 # Builds dist\KrakenControl-<version>-portable.zip for testers:
 #   KrakenControl\kraken-control.exe  (static C runtime: no VC++ redistributable needed)
 #   KrakenControl\portable            (marker: settings + log go to .\data, not %APPDATA%)
-#   KrakenControl\README-TESTERS.txt
+#   KrakenControl\README-TESTERS.txt, LICENSE
 #   KrakenControl\licenses\*.txt      (embedded fonts)
 # Run: packaging\package.cmd (or: powershell -ExecutionPolicy Bypass -File packaging\package.ps1)
 $ErrorActionPreference = 'Stop'
@@ -29,6 +29,7 @@ if (Test-Path $out) { Remove-Item -Recurse -Force $out }
 New-Item -ItemType Directory -Force $stage | Out-Null
 Copy-Item target\portable\release\kraken-control.exe $stage
 Copy-Item packaging\README-TESTERS.txt $stage
+Copy-Item LICENSE $stage
 # Embedded fonts are OFL-1.1: ship their licences with the binary.
 New-Item -ItemType Directory -Force (Join-Path $stage 'licenses') | Out-Null
 Copy-Item app\res\fonts\*.txt (Join-Path $stage 'licenses')

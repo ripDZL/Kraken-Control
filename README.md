@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="app/res/kraken.svg" width="384 height="384" alt="Kraken Control icon">
+  <img src="app/res/kraken.svg" width="384" height="384" alt="Kraken Control icon">
 </p>
 
 <h1 align="center">Kraken Control</h1>
@@ -82,8 +82,15 @@ the official driver's Remap › Reset all keys.
 
 ## Install
 
-There are no prebuilt releases yet. Build from source (below), or build the
-portable zip.
+Download `KrakenControl-<version>-portable.zip` from
+[Releases](https://github.com/ripDZL/Kraken-Control/releases/latest), unzip it
+somewhere you can write to (Desktop or Documents, not Program Files) and run
+`kraken-control.exe`. Nothing is installed; settings stay in the `data` folder
+next to the exe.
+
+The exe isn't code-signed, so Windows SmartScreen may warn on first start:
+click **More info**, then **Run anyway**. Each release lists the zip's SHA-256
+so you can check the download (`Get-FileHash <zip>` in PowerShell).
 
 Requirements: Windows 10 or 11, 64-bit. The app draws on the CPU by default,
 so no particular graphics driver is needed. Settings › Drawing switches to

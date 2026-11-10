@@ -26,6 +26,7 @@
 ## Constraints
 - Never flash firmware. Never copy official bundle code (facts/data only).
 - Only A75 Master/Ultra supported; other models must stay read-only/unsupported until their tables are extracted.
+- Releases: push tag `v<Cargo version>` -> `.github/workflows/release.yml` (windows-latest: tests, `package.ps1`, SHA-256) -> DRAFT release with zip + .sha256; notes from `.github/release-notes.md` (edit "What's new", then Publish). Tag must equal Cargo.toml version.
 - Tester package: `packaging\package.cmd` -> `dist\KrakenControl-<ver>-portable.zip` (static CRT build in `target\portable`, `portable` marker, README-TESTERS.txt). `/dist` gitignored.
 
 ## UI / themes (2026-11-08)

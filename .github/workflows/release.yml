@@ -1,0 +1,65 @@
+# Builds the portable zip on a GitHub Windows runner and attaches it to a
+# DRAFT release. Review the draft on the Releases page, then press Publish.
+#
+# Start it by pushing a tag that matches Cargo.toml's version:
+#   git tag v0.12.0
+#   git push origin v0.12.0
+# or from the Actions tab (Release > Run workflow) with an existing tag.
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to build, e.g. v0.12.0"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          cargo --version
+
+      - name: Tag must match Cargo.toml version
+        run: |
+          $ver = (Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
+          if ($env:TAG -ne "v$ver") { throw "Tag $env:TAG does not match Cargo.toml version $ver" }
+          "VERSION=$ver" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+      - name: Build portable zip
+        run: ./packaging/package.ps1
+
+      - name: Checksum
+        run: |
+          $name = "KrakenControl-$env:VERSION-portable.zip"
+          $hash = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $name" | Out-File -Encoding ascii "dist/$name.sha256"
+          "SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $name = "KrakenControl-$env:VERSION-portable.zip"
+          $notes = (Get-Content .github/release-notes.md -Raw).Replace('{{VERSION}}', $env:VERSION).Replace('{{SHA256}}', $env:SHA256)
+          Set-Content -Path notes.md -Value $notes -Encoding utf8
+          gh release create $env:TAG "dist/$name" "dist/$name.sha256" --draft --title "Kraken Control $env:VERSION" --notes-file notes.md

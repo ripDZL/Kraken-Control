@@ -87,3 +87,4 @@
 ## 2026-11-10 (published)
 - Public repo github.com/ripDZL/Karken-Control (rename to Kraken-Control pending), branch `main`, root commit 0a2f45b. Author = GitHub noreply address only (old repo's web-UI initial commit exposed the account email; repo deleted + recreated).
 - Pre-publish audit: no emails/tokens/keys/local paths; AI_CONTEXT path scrubbed; screenshots metadata-stripped; protocol docs prose only; `crates/dd-proto/data/` = extracted factual tables. Added README (features, safety, build, credits incl. svumo/DrunkDeer-Control MIT), LICENSE (MIT), `.gitignore` (/KrakenControl/, /data/, exported profiles), `docs/screenshots/`.
+- Release pipeline: `.github/workflows/release.yml` + `.github/release-notes.md`; zip now ships LICENSE; README Install points to Releases; README-TESTERS reworded for public use (issues link). Tag v0.12.0 pushed -> first draft release.

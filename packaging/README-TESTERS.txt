@@ -1,5 +1,5 @@
-Kraken Control - test build (portable)
-======================================
+Kraken Control (portable)
+=========================
 
 What it is
   A small Windows app for DrunkDeer keyboards, replacing the web driver.
@@ -8,7 +8,7 @@ What it is
     - A75 Ultra 2025 (USB ID 19F5:FB3E)
   Other DrunkDeer models are detected but not supported yet.
   Knob and advanced keys: A75 Ultra 2025 only for now. The older A75 Master /
-  Ultra get key travel, remap, Last Win / RDT, lighting (new, please test),
+  Ultra get key travel, remap, Last Win / RDT, lighting,
   profiles and tray. Their lighting can't be read from the keyboard, so the
   Lighting tab shows what the app last sent.
 
@@ -37,5 +37,6 @@ Safety
   Take screenshots of your current settings first so you can put them back.
 
 Reporting problems
-  Send data\log.txt with a short note: what you did, what you expected,
+  Open an issue at https://github.com/ripDZL/Kraken-Control/issues and
+  attach data\log.txt with a short note: what you did, what you expected,
   what happened. If asked, tick "Log packets (hex)" and repeat the steps.
