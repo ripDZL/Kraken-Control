@@ -19,9 +19,9 @@
 - [x] v0.7.1 (user OK 2026-11-08): painting writes mid-stroke (one in flight, next follows), clicks immediate, held slider/picker after 150 ms pause or release. Fill/Undo moved before Brush picker (picker popup may have covered them).
 - [x] Fill bug (not reproduced in v0.7.1, user OK): v0.7 log showed Fill P (82 keys) written + verified twice, but a later Fill attempt produced no write (10:08:18–10:08:28; user then pressed Read and painted by hand). Cause unknown; v0.7.1 logs `gen2 ui: fill all keys` per click — check next log.
 
-- [ ] v0.8.2 portable package: run `packaging\package.cmd` on Windows (uncompiled: portable mode in store.rs/main.rs, v0.8.1 patterns UI). Check zip runs on a second PC without VC++ runtime and writes only to `data\`.
+- [x] v0.8.2 portable package: built on Windows, tester ran the zip on another PC (2026-11-08); release zips now built by CI. Not yet confirmed: writes only to `data\`.
 
-- [ ] UI overhaul (user request 2026-11-08): clearer, better-looking UI for non-technical users, both boards. See SESSION_SUMMARY.
+- [x] UI overhaul phase 1 (v0.10–v0.11). Remaining items: see "UI overhaul" below.
 
 ## P1
 - [x] Diagnostics log (%APPDATA%\KrakenControl\log.txt, packet hex toggle).
@@ -34,7 +34,7 @@
 - [x] Gen-2 knob remap + advanced keys SOCD/MT/TGL create/remove, RS/OKS/DKS list/remove (v0.6, untested).
 - [ ] Gen-2 DKS/RS/OKS editors, macros, light direction, advanced keys on FN layers.
 - [x] v0.8 (user OK 2026-11-08; `dd-proto::pattern` tested standalone 6/6 + clippy): Custom lighting Highlight groups (WASD/Arrows/F-keys/Numbers/Modifiers by factory HID code) + Pattern (direction; Gradient brush->2nd colour, Rainbow 5/6 wheel, Random) -> `set_key_colors` (one undo step, live write).
-- [ ] v0.8.1 (uncompiled UI; pattern.rs 8/8 tests + clippy): Stripes, Checker (brush + 2nd colour), palettes Sunset/Ocean/Forest/Fire/Vapor/Ice (3-stop blend along direction).
+- [ ] v0.8.1 (compiled since v0.10; hardware check pending): Stripes, Checker (brush + 2nd colour), palettes Sunset/Ocean/Forest/Fire/Vapor/Ice (3-stop blend along direction).
 - [ ] Firmware effects using per-key colours (user request): official UI only writes func [12]=0 (single); unknown whether any [12] value makes effects use the 0B table. Needs bundle check (no guessing per CLAUDE.md).
 - [ ] Gen-2 animated custom lighting: Animated host effects only if bundle has a RAM-only live RGB command (search `gen2-bundle` for music/screen-sync); repeated 0B writes may wear storage (unknown if 0B is flash). Bundle folder access was blocked this session.
 - [ ] Tray agent per-app switching for gen-2 profiles (cmd 0E).
@@ -44,15 +44,21 @@
 - [ ] Lighting (AE 01, custom per-key), knob remap (C1 03), key-depth live view (FD 03 + FD 06). Tester (friend, A75 Master) asked for Lighting 2026-11-08. -> v0.9 gen-1 Lighting tab written (effects + custom per-key + patterns), UNTESTED on hardware; knob/key depth still open. Needs gen-1 bundle `DrunkDeer-Control\tools\captures\antler-beta\index.exKUY8vl.js` (folder request denied by auto mode; user must add folder).
 - [x] Performance pass 1 (v0.10.3): memory counters, default fonts dropped, atlas width 2048, whole-pixel key fonts. GL config already minimal (no MSAA/depth/stencil); agent already windowless.
 - [x] Performance pass 2 (v0.11.0): software renderer (default) — Linux-verified only.
-- [ ] Windows: build v0.11.0, check software renderer (window, typing, clipboard, DPI scaling, resize, minimise/restore), memory vs GPU, frame ms maximised.
+- [ ] Windows (builds since v0.11; user: "looks good so far"): check software renderer (window, typing, clipboard, DPI scaling, resize, minimise/restore), memory vs GPU, frame ms maximised.
 - [ ] Other models: extract tables from bundle (tools in C# fork `tools/antler-extract/`).
 - [ ] Drag-rectangle multi-select.
+
+## Release / repo
+- [x] v0.12.0 draft release built by CI (zip + .sha256).
+- [ ] Publish v0.12.0 (What's new = CHANGELOG entry).
+- [ ] Repo settings (user): upload `docs/social-preview.png` (Settings > General > Social preview); enable private vulnerability reporting (SECURITY.md points to it).
+- [ ] Optional: release workflow fills What's new from CHANGELOG.
 
 ## Back-up (v0.12.0)
 - [ ] Windows: Export / Import dialogs, import into a fresh install, Save to keyboard after import (both boards).
 
 ## UI overhaul (v0.10.0)
-- [ ] Build v0.10.0 on Windows (`packaging\package.cmd`); fix compile errors (ui.rs/ui2.rs/main.rs/store.rs uncompiled).
+- [x] Builds on Windows (v0.10 onwards; CI on every push).
 - [ ] Check both themes on every page (Settings > Appearance), window at 1180x760 and minimum 960x600.
 - [x] Same keyboard size on every page, both boards (v0.10.2).
 - [x] Lighting presets, both boards (v0.10.2, cloud-tested; hardware untested).

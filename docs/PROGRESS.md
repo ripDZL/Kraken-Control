@@ -85,7 +85,7 @@
 - Verified (Linux demo, XTest clicks): gen-1 export -> tampered file (ap 99, unknown action, bad pair, theme, preset, odd app rule) -> import: all checks fired, values applied; gen-2 export -> tamper (polling 99, macro action, DKS, actuation 99, colour) -> import -> re-export confirms. Tests: backup round trip / format / newer version / gen-1 checks. NOT verified on Windows (file dialogs untested).
 
 ## 2026-11-10 (published)
-- Public repo github.com/ripDZL/Karken-Control (rename to Kraken-Control pending), branch `main`, root commit 0a2f45b. Author = GitHub noreply address only (old repo's web-UI initial commit exposed the account email; repo deleted + recreated).
+- Public repo github.com/ripDZL/Kraken-Control (created as Karken-Control, renamed), branch `main`, root commit 0a2f45b. Author = GitHub noreply address only (old repo's web-UI initial commit exposed the account email; repo deleted + recreated).
 - Pre-publish audit: no emails/tokens/keys/local paths; AI_CONTEXT path scrubbed; screenshots metadata-stripped; protocol docs prose only; `crates/dd-proto/data/` = extracted factual tables. Added README (features, safety, build, credits incl. svumo/DrunkDeer-Control MIT), LICENSE (MIT), `.gitignore` (/KrakenControl/, /data/, exported profiles), `docs/screenshots/`.
 - Release pipeline: `.github/workflows/release.yml` + `.github/release-notes.md`; zip now ships LICENSE; README Install points to Releases; README-TESTERS reworded for public use (issues link). Tag v0.12.0 pushed -> first draft release.
 - Release v0.12.0: Release run passed on windows-latest (tests green on Windows); draft has zip (exe 3.1 MB) + .sha256, checksum verified. Draft body "What's new" = CHANGELOG 0.12.0 (paste manually: session can't edit releases or repo settings).
