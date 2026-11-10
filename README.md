@@ -27,8 +27,8 @@
 
 ![Performance page, Dark Grey theme](docs/screenshots/performance.png)
 
-Kraken Control does what the DrunkDeer web driver does in a single ~3 MB exe:
-no browser, no .NET, no WebView, nothing to install. It is an unofficial
+Kraken Control does what the DrunkDeer web driver does in a single exe: no
+browser, no .NET, no WebView, nothing to install. It is an unofficial
 project, not made by or affiliated with DrunkDeer.
 
 ## Supported keyboards
