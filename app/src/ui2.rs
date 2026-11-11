@@ -74,6 +74,12 @@ pub struct Gen2Panel {
     macros_synced: Vec<Vec<MacroEvent>>,
     macros_sent: Option<Vec<Vec<MacroEvent>>>,
     macro_edit: Option<MacroEdit>,
+    /// Live view (Lighting page, built-in effects): colours the keyboard shows now,
+    /// when the last read was sent (None = none in flight) and whether the keyboard answers.
+    leds: Vec<u8>,
+    led_pending: Option<Instant>,
+    led_next: Instant,
+    led_off: bool,
     /// Knob press / left / right matrix slots.
     knob: [Option<u8>; 3],
     /// Knob action selected for remapping (index into `knob`).
@@ -120,6 +126,7 @@ const EDITABLE: &[func::Field] = &[
     func::LIGHT_R,
     func::LIGHT_G,
     func::LIGHT_B,
+    func::LIGHT_DIRECTION,
 ];
 
 /// Keyboard settings and lighting fields saved in back-up files, by name.
@@ -138,6 +145,7 @@ const BACKUP_FIELDS: &[(&str, func::Field)] = &[
     ("light_r", func::LIGHT_R),
     ("light_g", func::LIGHT_G),
     ("light_b", func::LIGHT_B),
+    ("light_direction", func::LIGHT_DIRECTION),
 ];
 
 /// Values the Settings and Lighting pages can produce for `field`.
@@ -165,6 +173,8 @@ const LIGHTING: &[func::Field] = &[
     func::LIGHT_R,
     func::LIGHT_G,
     func::LIGHT_B,
+    // Added after presets existed: keep it last (older presets have one field less).
+    func::LIGHT_DIRECTION,
 ];
 
 impl Gen2Panel {
@@ -190,6 +200,10 @@ impl Gen2Panel {
             macros_synced: Vec::new(),
             macros_sent: None,
             macro_edit: None,
+            leds: Vec::new(),
+            led_pending: None,
+            led_next: Instant::now(),
+            led_off: false,
             knob: [None; 3],
             knob_sel: None,
             draft: None,
@@ -329,6 +343,9 @@ impl Gen2Panel {
         self.macros = self.macros_synced.clone();
         self.macros_sent = None;
         self.macro_edit = None;
+        self.leds.clear();
+        self.led_pending = None;
+        self.led_off = false;
         self.knob = gen2::knob_slots(&s.factory[0]);
         self.draft = None;
         self.painting = None;
@@ -415,6 +432,11 @@ impl Gen2Panel {
                         s.macros = back;
                     }
                 }
+                Event::Leds(d) => {
+                    self.led_pending = None;
+                    self.led_off = d.is_empty();
+                    self.leds = d;
+                }
                 Event::Busy(b) => self.busy = b,
                 Event::Done(m) => self.set_status(m, false),
                 Event::Error(m) => self.set_status(m, true),
@@ -454,6 +476,31 @@ impl Gen2Panel {
             v.push(Table::Dks);
         }
         v
+    }
+
+    /// Lighting page with a built-in effect on a real keyboard: the on-screen
+    /// keyboard shows what the keys are doing (the official page does the same).
+    fn live_view(&self) -> bool {
+        self.tab == Tab::Lighting && !self.led_off && self.snap.is_some() && func::get(&self.func, func::LIGHT_EFFECT) != 0
+    }
+
+    /// Asks for the live colours every 300 ms (official interval), one read at a time.
+    fn led_poll(&mut self, ctx: &egui::Context) {
+        if self.demo {
+            // No keyboard: a fixed rainbow by matrix slot stands in for the live colours.
+            self.leds = (0..gen2::KEYS).flat_map(|s| egui::ecolor::Hsva::new(s as f32 / 95.0 % 1.0, 0.85, 1.0, 1.0).to_srgb()).collect();
+            return;
+        }
+        let now = Instant::now();
+        if self.led_pending.is_some_and(|t| now.duration_since(t) > Duration::from_secs(3)) {
+            self.led_pending = None;
+        }
+        if self.led_pending.is_none() && !self.busy && now >= self.led_next {
+            self.dev.send(Cmd::ReadLeds);
+            self.led_pending = Some(now);
+            self.led_next = now + Duration::from_millis(300);
+        }
+        ctx.request_repaint_after(Duration::from_millis(100));
     }
 
     fn macros_dirty(&self) -> bool {
@@ -655,6 +702,10 @@ impl Gen2Panel {
             return;
         }
         let custom_light = func::get(&self.func, func::LIGHT_EFFECT) == 0;
+        let live_view = self.live_view();
+        if live_view {
+            self.led_poll(ui.ctx());
+        }
         if matches!(self.tab, Tab::Performance | Tab::Keymap | Tab::Advanced) || (self.tab == Tab::Lighting && custom_light) {
             theme::card(ui, |ui| {
                 ui.add_space(8.0);
@@ -669,7 +720,19 @@ impl Gen2Panel {
                 theme::card(ui, |ui| self.advanced(ui));
                 theme::card(ui, |ui| self.macros_card(ui));
             }
-            Tab::Lighting => theme::card(ui, |ui| self.lighting(ui)),
+            Tab::Lighting => {
+                theme::card(ui, |ui| self.lighting(ui));
+                if live_view {
+                    // Below the controls, so they stay in view without scrolling.
+                    theme::card(ui, |ui| {
+                        theme::section(ui, "Live view");
+                        theme::help(ui, "The lights as the keyboard shows them right now.");
+                        ui.add_space(4.0);
+                        ui.vertical_centered(|ui| self.keyboard(ui));
+                        ui.add_space(10.0);
+                    });
+                }
+            }
             Tab::Profiles => theme::card(ui, |ui| self.profiles(ui)),
             Tab::Settings => theme::card(ui, |ui| {
                 theme::section(ui, "Keyboard");
@@ -892,7 +955,7 @@ impl Gen2Panel {
 
     /// Puts a preset's effect fields and key colours in place; `live_lighting` writes them.
     fn apply_light_preset(&mut self, p: &LightPreset2) {
-        if p.fields.len() == LIGHTING.len() {
+        if p.fields.len() == LIGHTING.len() || p.fields.len() + 1 == LIGHTING.len() {
             for (f, v) in LIGHTING.iter().zip(&p.fields) {
                 func::set(&mut self.func, *f, *v);
             }
@@ -946,6 +1009,7 @@ impl Gen2Panel {
     }
 
     fn keyboard(&mut self, ui: &mut egui::Ui) {
+        let live_view = self.live_view();
         let unit = theme::key_unit(ui);
         let size = Vec2::new(16.25 * unit, 6.4 * unit);
         let (resp, painter) = ui.allocate_painter(size, Sense::click());
@@ -977,7 +1041,11 @@ impl Gen2Panel {
                 Tab::Lighting | Tab::Profiles | Tab::Settings => false,
                 _ => self.knob_sel.is_none() && self.selected.contains(&i),
             };
-            let key_color = (self.tab == Tab::Lighting).then(|| slot.and_then(|s| self.colors.get(s))).flatten().map(|c| Color32::from_rgb(c[0], c[1], c[2]));
+            let key_color = match (self.tab == Tab::Lighting, live_view) {
+                (true, false) => slot.and_then(|s| self.colors.get(s)).map(|c| Color32::from_rgb(c[0], c[1], c[2])),
+                (true, true) => slot.and_then(|s| self.leds.get(3 * s..3 * s + 3)).map(|c| Color32::from_rgb(c[0], c[1], c[2])),
+                _ => None,
+            };
             let tag = slot.and_then(|s| self.advanced_tag(s));
             let edge = (tag.is_some() && self.tab == Tab::Advanced).then_some(teal);
             let cap = Cap { fill: key_color, selected, hovered: r.hovered(), edge, empty: slot.is_none() };
@@ -1062,6 +1130,7 @@ impl Gen2Panel {
         }
 
         match self.tab {
+            Tab::Lighting if live_view => {} // live view: nothing to edit on the keys
             Tab::Lighting => {
                 // Brush: press and drag across keys to paint, right-click picks a key's colour.
                 if let Some(s) = right_clicked.and_then(|i| self.slots[i]) {
@@ -1750,6 +1819,17 @@ impl Gen2Panel {
                 ui.add_sized([120.0, 18.0], egui::Label::new("Speed"));
                 if ui.add(egui::Slider::new(&mut speed, 0..=4)).changed() {
                     func::set(&mut self.func, func::LIGHT_SPEED_INV, 4 - speed);
+                }
+            });
+        }
+        if let Some(choices) = gen2::effect_directions(effect) {
+            let mut dir = func::get(&self.func, func::LIGHT_DIRECTION);
+            ui.horizontal(|ui| {
+                ui.add_sized([120.0, 18.0], egui::Label::new("Direction"));
+                for (value, name) in choices {
+                    if ui.selectable_value(&mut dir, value, name).changed() {
+                        func::set(&mut self.func, func::LIGHT_DIRECTION, value);
+                    }
                 }
             });
         }

@@ -33,7 +33,9 @@
 - [x] Gen-2 remap (cmd 09, 4 layers, safe picker), per-key RGB (cmd 0A/0B), lighting effect grid (v0.5, untested).
 - [x] Gen-2 knob remap + advanced keys SOCD/MT/TGL create/remove, RS/OKS/DKS list/remove (v0.6, untested).
 - [x] Gen-2 DKS / RS / OKS editors (2026-11-11, cloud-tested in demo; hardware untested).
-- [ ] Gen-2 light direction, advanced keys on FN layers.
+- [x] Gen-2 light direction + live view (2026-11-11, demo-tested).
+- [ ] Hardware (A75 Ultra 2025): Lighting > Wave / Up and down waves / Fountain / Spin: Direction buttons do what they say (Fountain Outward / Inward is read from icon names); Live view card follows the keyboard, typing and saving still feel instant while it runs; log has no `live colours not readable`.
+- [ ] Gen-2 advanced keys on FN layers.
 - [x] v0.8 (user OK 2026-11-08; `dd-proto::pattern` tested standalone 6/6 + clippy): Custom lighting Highlight groups (WASD/Arrows/F-keys/Numbers/Modifiers by factory HID code) + Pattern (direction; Gradient brush->2nd colour, Rainbow 5/6 wheel, Random) -> `set_key_colors` (one undo step, live write).
 - [ ] v0.8.1 (compiled since v0.10; hardware check pending): Stripes, Checker (brush + 2nd colour), palettes Sunset/Ocean/Forest/Fire/Vapor/Ice (3-stop blend along direction).
 - [ ] Firmware effects using per-key colours (user request): official UI only writes func [12]=0 (single); unknown whether any [12] value makes effects use the 0B table. Needs bundle check (no guessing per CLAUDE.md).

@@ -38,6 +38,8 @@ pub mod cmd {
     pub const KEYMAP_WRITE: u8 = 0x09;
     pub const PROFILE_SELECT: u8 = 0x0E;
     pub const MACRO_READ: u8 = 0x0C;
+    /// Colours the keyboard is showing right now, 128 × RGB from address 0 (read-only).
+    pub const LED_READ: u8 = 0xDE;
     pub const MACRO_WRITE: u8 = 0x0D;
     /// Per-key colours (effect "Custom"), 128 × RGB at 512·profile.
     pub const COLORS_READ: u8 = 0x0A;
@@ -1087,6 +1089,21 @@ pub fn effect_has_color(effect: u8) -> bool {
     !matches!(effect, 0 | 1 | 5)
 }
 
+/// Direction choices of an effect as `(value of func [11], name)`, in the
+/// official button order; `None` = the effect has no direction. Backlight only.
+pub fn effect_directions(effect: u8) -> Option<[(u8, &'static str); 2]> {
+    match effect {
+        6 => Some([(1, "Left"), (0, "Right")]),
+        7 => Some([(1, "Up"), (0, "Down")]),
+        8 => Some([(0, "Outward"), (1, "Inward")]),
+        10 => Some([(1, "Clockwise"), (0, "Counter-clockwise")]),
+        _ => None,
+    }
+}
+
+/// Bytes of the live colour read (`cmd::LED_READ`), same layout as the per-key colour table.
+pub const LED_LEN: usize = 384;
+
 /// Effects with a speed setting (K75 `speed: true`).
 pub fn effect_has_speed(effect: u8) -> bool {
     !matches!(effect, 0 | 3)
@@ -1363,6 +1380,24 @@ mod tests {
         assert_eq!(pk[1][4..8], [12, 0x38, 0x08, 1]);
         assert_eq!(macro_action(5), Action { kind: 112, code1: 5, code2: 1 });
         assert!(macros_bound(&[vec![macro_action(5)]])[5]);
+    }
+
+    #[test]
+    fn lighting_direction_and_live_read() {
+        // Official lighting page: direction buttons only for Wave, Up and down waves, Fountain, Spin.
+        let with: Vec<u8> = (0..EFFECTS.len() as u8).filter(|e| effect_directions(*e).is_some()).collect();
+        assert_eq!(with, [6, 7, 8, 10]);
+        assert_eq!(EFFECTS[6], "Wave");
+        assert_eq!(effect_directions(6), Some([(1, "Left"), (0, "Right")]));
+        assert_eq!(effect_directions(8).unwrap()[0], (0, "Outward"));
+        let mut block = [0u8; 64];
+        func::set(&mut block, func::LIGHT_DIRECTION, 1);
+        assert_eq!(block[11], 1);
+        // Live colours: `55 DE 00 sum len lo hi`, 384 B in 56 B reads.
+        let reads = read_region(cmd::LED_READ, 0, LED_LEN);
+        assert_eq!(reads.len(), 7);
+        assert_eq!(reads[0][..7], [GROUP, 0xDE, 0, 56, 56, 0, 0]);
+        assert_eq!(reads[6][..7], [GROUP, 0xDE, 0, (48 + 0x50 + 1) as u8, 48, 0x50, 1]);
     }
 
     #[test]

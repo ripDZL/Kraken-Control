@@ -88,6 +88,10 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - `[6]` b0 lock Win, b1 lock Alt+Tab, b2 lock Alt+F4 · `[7]` b0 Adaptive Stable ("berserk"), b1 bottom-RT mode, b3 debug, b5–7 debounce
 - Lighting: `[8]` effect, `[9]` brightness 0–100, `[10]` 4 − speed, `[11]` direction, `[12]` 0 = single colour, `[14..16]` RGB; logo `[24..31]`, side `[32..39]`.
 - Polling-rate change re-enumerates the keyboard (official reconnects after 3 s; confirmed).
+- Direction `[11]` (L14896-14903, buttons L15670-15815): backlight only, shown for effects 6 Wave (1 left, 0 right), 7 Up and down waves (1 up, 0 down), 8 Fountain (0 = icon `ks`, 1 = icon `jh`; Kraken calls them Outward / Inward — check on hardware), 10 Spin (1 = `ssz` clockwise, 0 = `nsz` counter-clockwise). Written with the whole 64 B block like the other lighting fields.
+- Light point `[17]` bits 0–1 (`setLightPoint`, L2346; buttons L15063-15090): offered for device type 102 only, not the A75 Ultra (type 101). Not in Kraken.
+- Live colours: read `DE` at address 0, 384 B in 56 B chunks (`getKeyLight`, L729-738), 128 × RGB by matrix slot like the 0A table. The lighting page polls it every 300 ms while a built-in effect is on (L18955-18960). Read-only. Kraken: `Cmd::ReadLeds` (not packet-logged, no busy state), "Live view" card on the Lighting page.
+- No sleep / idle-off time anywhere in the bundle (the only "Sleep" is the system key, type 64).
 - Official lighting setter only ever writes `[12] = 0` (single colour) when a colour is chosen; never 1. Backlight off = brightness 0.
 - Per-key colours (effect 0 "Custom"): cmd 0A read / 0B write, 128 × RGB at 512·profile (official writes 384 B).
 - Public info type bytes read `FF FF FF FF` on fw 121 (unset).
@@ -97,4 +101,4 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - Never used by Kraken: calibration A8/A9 (input reports 0xA0 = calibration stream), reset EE, boot mode 95[06...], ROM erase/write 81/83, firmware update.
 - Func-byte setters (L2346-2390): func[7] bit0 Berserk mode, bits1 stability (Adaptive Stable), bit3 debug mode key, bits5-7 debounce; func[4] low nibble polling, high nibble tick rate; func[1] system mode.
 - Live depth: none on gen-2 (the Test tab uses browser keydown/keyup, L20835).
-- Gaps vs Kraken (2026-11-11; DKS / Rappy Snappy / OKS editors and macros done the same day): light direction, light position, sleep time, live LED preview (DE), import of the official config export.
+- Gaps vs Kraken (2026-11-11, after DKS / RS / OKS, macros, light direction and live view): import of the official config export; logo / side light blocks `[24..39]` (other models); light point (type 102).

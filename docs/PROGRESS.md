@@ -121,3 +121,10 @@
 - Demo: M1 = Ctrl+C; `--g2draft=macro` opens the editor. Verified on Linux (XTest): Clear, Record, typed Shift+H... -> steps listed in order. Needs keyboard focus on the window (set by hand under Xvfb).
 - Tests: dd-proto 47, app 16; clippy clean both configs. Hardware untested.
 
+## 2026-11-11 (web-driver parity, part 4: gen-2 lighting extras)
+- User ran a655f15 on the 2025 A75 Ultra: "everything seems okay" (DKS / RS / OKS / macros; not itemised). Asked for live key actuation on that board: not in the official protocol (documented in TODO).
+- Bundle: direction values per effect, light point (type 102 only), live colour read DE, no sleep time -> `docs/protocol-gen2.md` settings block.
+- `gen2::effect_directions`, `cmd::LED_READ`, `LED_LEN`; test `lighting_direction_and_live_read`.
+- App: Direction row on Lighting for effects 6 / 7 / 8 / 10 (`LIGHT_DIRECTION` now in `EDITABLE`, `LIGHTING` (last; presets with one field less still apply) and `BACKUP_FIELDS`). Live view card below the controls (`Cmd::ReadLeds` / `Event::Leds`, 300 ms poll, quiet).
+- Verified: Linux demo screenshot (Direction row, Live view with stand-in colours). Tests: dd-proto 48, app 16; clippy clean both configs. Hardware untested.
+

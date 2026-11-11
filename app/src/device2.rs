@@ -67,6 +67,8 @@ pub enum Cmd {
     SaveTable { profile: u8, table: Table, data: Vec<u8> },
     /// Writes the macro block (header + events, `gen2::encode_macros`), then verifies it.
     SaveMacros { profile: u8, data: Vec<u8> },
+    /// Reads the colours the keyboard is showing (live view on the Lighting page).
+    ReadLeds,
 }
 
 pub enum Event {
@@ -81,6 +83,8 @@ pub enum Event {
     Table { table: Table, data: Vec<u8> },
     /// The macro block as read back after a write.
     Macros(Vec<u8>),
+    /// Live colours (128 × RGB by matrix slot); empty = the keyboard didn't answer.
+    Leds(Vec<u8>),
     Busy(bool),
     Done(String),
     Error(String),
@@ -373,6 +377,26 @@ impl Worker {
         }
     }
 
+    /// Live colour read: polled a few times a second, so it stays out of the
+    /// packet log and the busy state. A keyboard that doesn't answer ends the polling.
+    fn read_leds(&mut self) {
+        let Some(s) = self.session.as_mut() else { return };
+        s.quiet = true;
+        let res = s.read_region(cmd::LED_READ, 0, gen2::LED_LEN);
+        s.quiet = false;
+        match res {
+            Ok(data) => self.emit(Event::Leds(data)),
+            Err(e) if is_disconnect(&e) => self.fail(e, "Live colours"),
+            Err(e) => {
+                log::line(format!("gen2: live colours not readable ({e}); live view off"));
+                if let Some(s) = self.session.as_mut() {
+                    let _ = s.drain();
+                }
+                self.emit(Event::Leds(Vec::new()));
+            }
+        }
+    }
+
     fn fail(&mut self, e: io::Error, what: &str) {
         if is_disconnect(&e) {
             log::line(format!("gen2: disconnected: {e}"));
@@ -387,6 +411,10 @@ impl Worker {
     fn handle(&mut self, c: Cmd) {
         if self.session.is_none() {
             self.emit(Event::Error("No gen-2 keyboard connected".into()));
+            return;
+        }
+        if matches!(c, Cmd::ReadLeds) {
+            self.read_leds();
             return;
         }
         self.emit(Event::Busy(true));
@@ -404,6 +432,7 @@ impl Worker {
     fn run_cmd(&mut self, c: Cmd) -> io::Result<String> {
         let s = self.session.as_mut().expect("checked");
         match c {
+            Cmd::ReadLeds => Ok(String::new()), // handled in `handle` (no status, no busy state)
             Cmd::Refresh => {
                 let snap = s.snapshot()?;
                 self.emit(Event::Snapshot(Box::new(snap)));

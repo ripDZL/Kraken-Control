@@ -30,9 +30,9 @@ Current state and handoff. History is in PROGRESS.md.
 
 ## Next
 1. User tests on hardware: gen-1 live key depth (Performance) and knob (Keymap), then the v0.12.0 zip items still open.
-2. Web-driver parity, gen-2 (A75 Ultra 2025): DKS / Rappy Snappy / OKS editors and macros DONE (on `main`, unreleased, hardware untested; check lists in TODO "Web-driver parity"). Next in order:
-   - Lighting extras: light direction (func [11], already a field), light position, sleep time, live LED preview (cmd DE, 384 B, read-only, official polls every 300 ms, L18957). Read the func-byte setters around L2346-2390 and the lighting page for position / sleep fields first.
-   - Then import of the official config export (find the export / import code in the bundle; map onto `Gen2Panel::import_backup` checks).
+2. Web-driver parity, gen-2 (A75 Ultra 2025): DKS / Rappy Snappy / OKS editors, macros, light direction and live view DONE (on `main`, unreleased; user reported the first three groups OK on hardware in general terms, lighting extras untested; check lists in TODO "Web-driver parity"). Light point is type-102 only and there is no sleep time in the bundle. Next:
+   - Import of the official config export: find the export / import code in the bundle (search `exportConfig`, `importConfig`, `.json`, `download`, `FileReader`), document the file format, map it onto `Gen2Panel::import_backup` checks (same safety rules: only picker / factory actions, tables validated).
    - Bundle: `C:\...\Drunk Deer\gen2-bundle\` (request read access, stage the JS into the cloud, beautify with js-beautify 1.15.1 -> line refs match the protocol doc).
+   - Gen-2 live key depth: not available (no travel stream in the official driver); don't re-investigate unless the bundle is re-downloaded.
 3. Gen-1 bundle: ask the user to attach "New folder (21).zip" (gen-1 only, = live site, SHA-256 `0aa5b587f453d1b8…`), or read it in the built-in browser (`fetch('/js/index.exKUY8vl.js')` on beta.drunkdeer-antler.com); shells can't reach the site. Gen-2 bundle is only in `…\Drunk Deer\gen2-bundle\`.
 4. UI overhaul remainder: gen-2 Performance two-card layout; restyle Keymap / Advanced / Lighting editors.
