@@ -2,7 +2,7 @@
 
 Current state and handoff. History is in PROGRESS.md.
 
-## State (2026-11-10)
+## State (2026-11-11)
 - Kraken Control v0.12.0: native Rust app for DrunkDeer A75 Master/Ultra (gen-1, VID 352D) and A75 Ultra 2025 (gen-2, 19F5:FB3E). Public at github.com/ripDZL/Kraken-Control (`main`), MIT.
 - Release v0.12.0 published (Latest), built by `.github/workflows/release.yml` on windows-latest (tests green on Windows), zip 1.6 MB (exe 3.1 MB, static CRT) + .sha256. Repo: topics set, private vulnerability reporting on, community files incl. CODE_OF_CONDUCT; social preview = `docs/social-preview.png`.
 - Website live at https://ripdzl.github.io/Kraken-Control/ from `site/` (pages.yml). Light page + app Dark Grey surfaces, teal accent. Hero demo tabs: Simulate (drag keycap, gen-2 ranges) and Your keyboard (live keydown/keyup timeline; browsers can't read depth).
@@ -30,6 +30,9 @@ Current state and handoff. History is in PROGRESS.md.
 
 ## Next
 1. User tests on hardware: gen-1 live key depth (Performance) and knob (Keymap), then the v0.12.0 zip items still open.
-2. Web-driver parity, gen-2 (A75 Ultra 2025): DKS / Rappy Snappy / OKS editors DONE (unreleased, on `main`). Next in order: macros (0C / 0D, action 112) -> light direction, position, sleep time, live LED preview (DE) -> import of the official config export. Bundle: `C:\...\Drunk Deer\gen2-bundle\` (request read access, stage the JS, beautify with js-beautify 1.15.1 -> line refs match `docs/protocol-gen2.md`).
+2. Web-driver parity, gen-2 (A75 Ultra 2025): DKS / Rappy Snappy / OKS editors DONE (70e8627 on `main`, CI green, unreleased, hardware untested). Next in order:
+   - Macros: store layout + bind entry are in `docs/protocol-gen2.md` "Macros". Still to read in the bundle: macro `type` / repeats (search `macroType`, string 17202, L15900-16400), recorder limits, mouse events. Then: `gen2` macro block encode / decode + golden tests, `device2` read (0C) in snapshot + write (0D) with read-back, names in `state.json` (official keeps them in the browser), recorder / editor UI, bind via keymap `112, id, 1`, back-up.
+   - Then light direction, light position, sleep time, live LED preview (DE); then import of the official config export.
+   - Bundle: `C:\...\Drunk Deer\gen2-bundle\` (request read access, stage the JS into the cloud, beautify with js-beautify 1.15.1 -> line refs match the protocol doc).
 3. Gen-1 bundle: ask the user to attach "New folder (21).zip" (gen-1 only, = live site, SHA-256 `0aa5b587f453d1b8…`), or read it in the built-in browser (`fetch('/js/index.exKUY8vl.js')` on beta.drunkdeer-antler.com); shells can't reach the site. Gen-2 bundle is only in `…\Drunk Deer\gen2-bundle\`.
 4. UI overhaul remainder: gen-2 Performance two-card layout; restyle Keymap / Advanced / Lighting editors.

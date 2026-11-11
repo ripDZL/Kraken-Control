@@ -73,6 +73,13 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - Save needs at least one action (L21953, message 20105); new key = four empty actions, points 10 / 30 / 30 / 10 (L22155-22161). Keymap entry `144 k 0`; no trigger write.
 - Impl: `gen2::{Dks, DksBind, dks_stage_bits, dks_spans, dks_entry, set_dks_entry}`; `device2::Table::Dks`; editor `ui2::dks_editor`.
 
+## Macros (0C / 0D) — facts read so far, not implemented
+- Store: one 2048 B block per profile at 2048·profile (official `setMacro(list, profileIndex)` L15975 / L19089, `getMacro(profile)` L12476; device calls L571-591). Written from offset 0 in 56 B chunks, last chunk flagged.
+- Layout (L2903-2952): header 64 B = 32 × u16 LE offset of each macro's first event (from block start); empty macro = offset 64 (reader also accepts 0). Events follow from offset 64, 4 B each: `[delay lo, delay hi, flags, code]`.
+- Event: delay (ms) = wait before the NEXT event (0 on the last; official defaults a missing delay to 2); flags bits 0–5 type (1 modifier, 2 key; reader L2954-2988 also knows 3 = mouse), bit 6 = press (0 = release), bit 7 = last event of the macro; code = HID code, modifiers 224–231 as mask `1 << (code & 15)`. Reader stops at code 0.
+- Bind: keymap entry `112, macro id, 1` (L19096-19100; id = index in the header). Binding needs a macro with at least one event (message 20103). Macro names live in the browser (`localStorage["macro_profile_new" + deviceName]`, L14139), not on the keyboard.
+- Not read yet: macro `type` / "Number of repeats" (17202), recorder limits (events per macro, total = (2048 − 64) / 4 = 496 at most), how mouse events are written (writer only emits types 1 / 2).
+
 ## Settings block (64 B)
 - `[1]` low nibble system mode (2 = mac) · `[4]` low = polling (1 8k, 2 4k, 3 2k, 4 1k), high = tick (0 off, 1 30, 2 60)
 - `[6]` b0 lock Win, b1 lock Alt+Tab, b2 lock Alt+F4 · `[7]` b0 Adaptive Stable ("berserk"), b1 bottom-RT mode, b3 debug, b5–7 debounce
