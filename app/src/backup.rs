@@ -11,6 +11,7 @@ use std::io;
 use std::path::Path;
 
 use dd_proto::catalog::CATEGORIES;
+use dd_proto::knob::KnobMap;
 use dd_proto::led;
 use dd_proto::packets::Travel;
 use dd_proto::rtp::{self, RdtPair};
@@ -60,6 +61,9 @@ pub struct Gen1 {
     pub model: Model,
     pub settings: Profile,
     pub lighting: Lighting1,
+    /// Knob actions (files from before v0.13 have none).
+    #[serde(default)]
+    pub knob: Option<KnobMap>,
 }
 
 /// 2025 boards (gen 2). Raw keyboard values, but per field, so a file can be
@@ -196,6 +200,18 @@ fn clamp_mm(v: f32, lo: f32, hi: f32, fallback: f32) -> f32 {
 }
 
 /// Whether a gen-1 key action is one Kraken offers itself.
+/// Knob actions must come from the key picker; others are dropped (knob's own action).
+pub fn check_knob(k: &mut KnobMap) -> usize {
+    let mut dropped = 0;
+    for a in k.iter_mut() {
+        if a.is_some_and(|x| !x.is_none() && !CATEGORIES.iter().any(|c| c.items.iter().any(|i| i.action == x))) {
+            *a = None;
+            dropped += 1;
+        }
+    }
+    dropped
+}
+
 fn gen1_action_ok(a: KeyAction, factory: KeyAction) -> bool {
     a.is_none() || a == factory || CATEGORIES.iter().any(|c| c.items.iter().any(|i| i.action == a))
 }
@@ -362,7 +378,7 @@ mod tests {
 
     #[test]
     fn round_trip_keeps_everything() {
-        let g = Gen1 { model: Model::A75Master, settings: profile(Model::A75Master), lighting: Lighting1::default() };
+        let g = Gen1 { model: Model::A75Master, settings: profile(Model::A75Master), lighting: Lighting1::default(), knob: None };
         let k = Kraken { theme: ThemeId::BlackPlumb, ..Default::default() };
         let f = new_file(Some(Keyboard::Gen1(Box::new(g))), Some(k));
         let text = serde_json::to_string(&f).unwrap();
@@ -427,5 +443,18 @@ mod tests {
         let mut p = profile(model);
         p.ap.truncate(3);
         assert!(check_gen1_profile(&mut p, &Keymap::factory(model), &model.layout()).is_err());
+    }
+
+    #[test]
+    fn knob_actions_must_be_offered() {
+        let offered = CATEGORIES[0].items[0].action;
+        let mut k: KnobMap = [None; 6];
+        k[0] = Some(offered);
+        k[1] = Some(KeyAction::new(0xFD, 2, 5)); // a device function the picker never offers
+        k[2] = Some(KeyAction::NONE);
+        assert_eq!(check_knob(&mut k), 1);
+        assert_eq!(k[0], Some(offered));
+        assert_eq!(k[1], None);
+        assert_eq!(k[2], Some(KeyAction::NONE));
     }
 }

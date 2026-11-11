@@ -28,6 +28,7 @@ Current state and handoff. History is in PROGRESS.md.
 - Gen-1 Lighting (v0.9) on hardware; gen-2 Toggle add/remove; tray agent end-to-end.
 
 ## Next
-1. Users test the v0.12.0 zip; triage issues.
-2. UI overhaul remainder: gen-2 Performance two-card layout; restyle Keymap / Advanced / Lighting editors.
-3. Optional: release workflow fills "What's new" from CHANGELOG automatically.
+1. User tests on hardware: gen-1 live key depth (Performance) and knob (Keymap), then the v0.12.0 zip items still open.
+2. Web-driver parity, gen-2 (A75 Ultra 2025), in order: DKS / Rappy Snappy / OKS editors -> macros -> light direction, position, sleep time, live LED preview (DE) -> import of the official config export. Bundle: `C:\...\Drunk Deer\gen2-bundle\` (request read access; beautify with js-beautify 1.15.1). Inventory in `docs/protocol-gen2.md`.
+3. Gen-1 bundle: read it in the built-in browser (`fetch('/js/index.exKUY8vl.js')` on beta.drunkdeer-antler.com); shells can't reach the site.
+4. UI overhaul remainder: gen-2 Performance two-card layout; restyle Keymap / Advanced / Lighting editors.

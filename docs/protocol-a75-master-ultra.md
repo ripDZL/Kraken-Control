@@ -57,7 +57,7 @@ Master vs Ultra keymap differ only at slot 15 (Master F13 0x68) and 36 (Ultra Ho
 - RT Match: common byte 11 (identity 30). Auto mode `FD 0C id` (0 Standard, 1 Competitive, 2 Extreme/"hardcore", 255 none; identity 31). Turning RT Match off also sends 255.
 - LW full replace `FC 0B v` (identity 32).
 - Slots (fw >= 81): `A2 0` query -> `A2 n`; `A2 n` sets count; `FB 05 idx 0..n-1` switch; identity byte 20 = current index (0-based). Max 5.
-- Knob `C1 03 event? sub? 0 [cmd][code by keyType: t0 ->[7], t1/t2 ->[6], t3 none]`.
+- Knob: see "Knob" below.
 - Firmware upgrade `F9 ...` (do not implement).
 
 ## Upstream app defects vs this spec (A75 Master, from user debug.log 2026-11-07)
@@ -76,3 +76,17 @@ Every push rewrites the full 3-layer keymap from the wrong layout:
 - Reply: keyboard answers `AE 01 ..`; handler `vC` is a no-op (L58410): lighting is NOT readable -> app keeps its copy (`store.lighting`).
 - Selecting a non-turbo effect in the official UI also turns Turbo mode off (L36352-36366); Kraken does not (shows a note instead).
 
+
+## Live key depth / "Keystroke tracking" (re-read 2026-11-11 from the live bundle, same file `index.exKUY8vl.js`; refs = character offsets in the minified file)
+- Start `FD 03 01`, stop `FD 03 00` (`sendTrackingStartData/StopData`, ~6071214). Legacy dialect (precision != 2 or oldOpenHighPrecision): `B6 03 01/00` with `B7` replies (not used by Kraken).
+- Reply: `FD 06 pkt ...` handled by `XC` (~6198051): keys `pkt*30 ..`, 30 per packet, packet 4 (pkt > 3) has 6 keys; u16 LE at bytes `3+2i, 4+2i`; value < 40 -> 0; shown as `value / (3.3 * 200)` (3.3 = max actuation `Ng`), i.e. mm = value / 200.
+- One frame per request: after the last packet (pkt > 3) the driver calls `AC` -> `CB` 20 ms later, which sends `FD 03 01` again while `key_tracking_flag` is set (~6194779).
+- FD dispatch (~6197305): sub 1..5 ignored; 6 -> depth; 8/10/11 -> `watch_ap_rt` (AP / RT down / RT up read-backs).
+- UI (~5767365): turning Keystroke tracking on turns Turbo off (and the reverse sends `FD 03 00`). Kraken does not change Turbo; it offers live depth only while the keyboard has Turbo off.
+
+## Knob (A75 Ultra 756 / Master 757, firmware >= 63)
+- `sendKnobEventData(item, event, mapped)` (~6073081): `C1 03 event mapped 0 cmd [6] [7]`; code by keyType: 0 -> byte 7, 1/2 -> byte 6, 3 -> none. No item -> bytes 3.. stay 0 (event uses the knob's own behaviour).
+- Events 1..6 in Knob component order (~5236000): right, left, down, up, right_down, left_down = "Rotate Right", "Rotate Left", "Press", "Lift", "Press + Rotate Right", "Press + Rotate Left".
+- Saved with the remap (~5718420): all six events in order; "reset" sends all six with no item. Mapping kept in localStorage (`knob_mappings_<model>_<profile>`): not readable from the keyboard.
+- Shown only for types 756/757 with `firmware_version >= 63`. Reply: input `C1` frees the link (handler case 193), so it is acknowledged.
+- Impl: `dd-proto/src/knob.rs`; Kraken keeps the map per model in `state.json` (`knobs`).

@@ -788,6 +788,26 @@ pub fn no_keyboard(ui: &mut Ui) {
     });
 }
 
+/// Deepest actuation point on the gen-1 boards; a fully shaded key face = this depth.
+const DEPTH_FULL_MM: f32 = 3.3;
+
+/// Live key depth on a key face: shading from the top shows how far the key is
+/// pressed (teal once past its actuation point), with an amber line at the
+/// actuation point while the key is moving.
+pub fn depth_overlay(painter: &Painter, face: Rect, depth_mm: f32, ap_mm: f32) {
+    if depth_mm <= 0.0 {
+        return;
+    }
+    let p = pal();
+    let y = |mm: f32| face.min.y + face.height() * (mm / DEPTH_FULL_MM).clamp(0.0, 1.0);
+    let on = depth_mm >= ap_mm;
+    let fill = if on { p.accent.gamma_multiply(0.45) } else { p.muted.gamma_multiply(0.28) };
+    let shade = Rect::from_min_max(face.min, egui::pos2(face.max.x, y(depth_mm)));
+    painter.rect_filled(shade, CornerRadius::same(p.radius.saturating_sub(1)), fill);
+    let ap = y(ap_mm);
+    painter.line_segment([egui::pos2(face.min.x + 2.0, ap), egui::pos2(face.max.x - 2.0, ap)], Stroke::new(1.5_f32, p.unsaved));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

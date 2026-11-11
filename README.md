@@ -66,6 +66,8 @@ product ID.
 **A75 Master / A75 Ultra (original)**
 
 - Rapid Trigger, Turbo and RT Match (Standard / Competitive / Extreme).
+- Live key depth: watch each key go down as you press it, against its actuation point.
+- Knob: set what turning, pressing and press-and-turn do.
 - Last Win and Release Dual-Trigger key pairs.
 - Default, Fn and Fn2 layers.
 - Profiles saved on the PC: load one, then Save to keyboard.

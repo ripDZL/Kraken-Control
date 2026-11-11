@@ -6,6 +6,7 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use dd_proto::knob::KnobMap;
 use dd_proto::packets::CommonFlags;
 use dd_proto::rtp::{MatchMode, RdtPair};
 use dd_proto::{Keymap, Model, SLOTS};
@@ -117,6 +118,9 @@ pub struct Store {
     pub light_presets: Vec<LightPreset1>,
     #[serde(default)]
     pub light_presets2: Vec<LightPreset2>,
+    /// Gen-1 knob per model, as last written (not readable from the keyboard).
+    #[serde(default)]
+    pub knobs: Vec<(Model, KnobMap)>,
 }
 
 impl Store {
@@ -157,6 +161,17 @@ impl Store {
         match self.lighting.iter_mut().find(|(m, _)| *m == model) {
             Some((_, x)) => *x = l.clone(),
             None => self.lighting.push((model, l.clone())),
+        }
+    }
+
+    pub fn knob(&self, model: Model) -> KnobMap {
+        self.knobs.iter().find(|(m, _)| *m == model).map(|(_, k)| *k).unwrap_or_default()
+    }
+
+    pub fn set_knob(&mut self, model: Model, k: &KnobMap) {
+        match self.knobs.iter_mut().find(|(m, _)| *m == model) {
+            Some((_, x)) => *x = *k,
+            None => self.knobs.push((model, *k)),
         }
     }
 

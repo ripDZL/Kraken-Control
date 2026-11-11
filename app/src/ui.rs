@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 use std::time::{Duration, Instant, SystemTime};
 
 use dd_proto::catalog::{self, CATEGORIES};
+use dd_proto::knob::{self, KnobEvent, KnobMap};
 use dd_proto::model::KNOB_POS;
 use dd_proto::packets::{self, CommonFlags, Travel};
 use dd_proto::rtp::{self, MatchMode, RdtPair};
@@ -68,6 +69,11 @@ pub struct App {
     slots: Option<u8>,
     keymap: Keymap,
     keymap_dirty: bool,
+    /// Gen-1 knob (app copy; written on Save, not readable).
+    knob: KnobMap,
+    knob_dirty: bool,
+    /// Knob event being edited on the Keymap page (instead of a key).
+    knob_event: Option<KnobEvent>,
     /// Cached per model (parsing the embedded JSON every frame is wasteful).
     factory: Keymap,
     layout: Vec<KeyDef>,
@@ -114,6 +120,11 @@ pub struct App {
     /// Start time and last memory log line (see `log_memory`).
     started: Instant,
     mem_logged: Option<Instant>,
+    /// Live key depth (Performance page): switched on, last frame in mm, and
+    /// whether the device thread was told to track.
+    live_depth: bool,
+    depth: Option<Box<device::Values>>,
+    tracking_sent: bool,
 }
 
 impl App {
@@ -134,6 +145,9 @@ impl App {
             gen2,
             board: if demo_gen2 { Board::Gen2 } else { Board::Gen1 },
             keymap: store.keymap(model),
+            knob: store.knob(model),
+            knob_dirty: false,
+            knob_event: None,
             light: store.lighting(model),
             store,
             identity: None,
@@ -186,12 +200,16 @@ impl App {
             backup_pending: None,
             started: Instant::now(),
             mem_logged: None,
+            live_depth: false,
+            depth: None,
+            tracking_sent: false,
         };
         if let Some(page) = args.iter().find_map(|a| a.strip_prefix("--tab=")).and_then(Page::from_arg) {
             app.tab = page;
         }
         let rdt_demo = args.iter().any(|a| a == "--tab=rdt");
         if demo {
+            app.live_depth = args.iter().any(|a| a == "--live-depth");
             app.enter_demo();
             if rdt_demo {
                 app.set_pair_mode(PairMode::Rdt);
@@ -225,7 +243,12 @@ impl App {
             slots: Some(3),
         };
         self.apply_snapshot(snap);
+        if self.live_depth {
+            // The captured identity has Turbo on, which blocks live depth.
+            self.flags.turbo = false;
+        }
         match self.tab {
+            Tab::Performance if self.live_depth => self.selected.clear(),
             Tab::Performance => self.selected = [44u8, 64, 65, 66].into_iter().collect(),
             Tab::Keymap => {
                 self.selected = [63u8].into_iter().collect();
@@ -305,6 +328,7 @@ impl App {
         self.travel_dirty()
             || self.flags_dirty()
             || self.keymap_dirty
+            || self.knob_dirty
             || self.pairs_dirty()
             || self.match_dirty()
             || self.lw_replace_dirty()
@@ -329,6 +353,9 @@ impl App {
                                 self.layout = m.layout();
                                 self.keymap = self.store.keymap(m);
                                 self.keymap_dirty = false;
+                                self.knob = self.store.knob(m);
+                                self.knob_dirty = false;
+                                self.knob_event = None;
                                 self.light = self.store.lighting(m);
                                 self.light_undo.clear();
                                 self.selected.clear();
@@ -366,6 +393,8 @@ impl App {
                     self.slots = None;
                     self.pick = None;
                     self.busy = false;
+                    self.depth = None;
+                    self.tracking_sent = false;
                     self.set_status(format!("Disconnected ({why}). Looking for keyboard…"), true);
                 }
                 Event::Travel(t) => {
@@ -382,6 +411,13 @@ impl App {
                 Event::Busy(b) => self.busy = b,
                 Event::Done(msg) => self.set_status(msg, false),
                 Event::Error(msg) => self.set_status(msg, true),
+                Event::Depth(d) => self.depth = Some(d),
+                Event::TrackingStopped(msg) => {
+                    self.live_depth = false;
+                    self.depth = None;
+                    self.tracking_sent = false;
+                    self.set_status(msg, true);
+                }
             }
         }
     }
@@ -446,6 +482,17 @@ impl App {
             self.keymap_dirty = false;
             self.persist();
         }
+        if self.knob_dirty && self.knob_supported() {
+            self.dev.send(Cmd::SaveKnob(Box::new(self.knob)));
+            self.store.set_knob(self.model, &self.knob);
+            self.knob_dirty = false;
+            self.persist();
+        }
+    }
+
+    /// Official driver: knob for A75 Master / Ultra with firmware 0.063+.
+    fn knob_supported(&self) -> bool {
+        self.demo || self.identity.as_ref().is_some_and(|i| i.model.is_some() && i.firmware >= knob::MIN_FIRMWARE)
     }
 
     fn persist(&mut self) {
@@ -833,7 +880,7 @@ impl App {
     }
 
     fn unsaved_count(&self) -> usize {
-        [self.travel_dirty(), self.flags_dirty(), self.pairs_dirty() || self.lw_replace_dirty(), self.match_dirty(), self.keymap_dirty]
+        [self.travel_dirty(), self.flags_dirty(), self.pairs_dirty() || self.lw_replace_dirty(), self.match_dirty(), self.keymap_dirty || self.knob_dirty]
             .into_iter()
             .filter(|d| *d)
             .count()
@@ -843,7 +890,7 @@ impl App {
     fn page_dirty(&self, page: Tab) -> bool {
         match page {
             Tab::Performance => self.travel_dirty() || self.flags_dirty() || self.match_dirty(),
-            Tab::Keymap => self.keymap_dirty,
+            Tab::Keymap => self.keymap_dirty || self.knob_dirty,
             Tab::Advanced => self.pairs_dirty() || self.lw_replace_dirty(),
             _ => false,
         }
@@ -1044,9 +1091,27 @@ impl App {
         let mut clicked = None;
         let mut right_clicked = None;
 
-        // Knob (not a key).
+        // Knob (not a key). On the Keymap page it can be clicked to remap its six actions.
         let kc = origin + Vec2::new((KNOB_POS.0 + 0.5) * unit, (KNOB_POS.1 + 0.5) * unit);
-        painter.circle(kc, unit * 0.45, pal().key_skirt, Stroke::new(2.0_f32, pal().key_top));
+        let knob_page = self.tab == Tab::Keymap;
+        let knob_resp = knob_page.then(|| {
+            ui.interact(Rect::from_center_size(kc, Vec2::splat(unit * 0.9)), ui.id().with("knob"), Sense::click())
+                .on_hover_text("Knob: click to choose what turning and pressing it does")
+        });
+        let knob_ring = if knob_page && self.knob_event.is_some() {
+            pal().accent
+        } else if knob_page && self.knob.iter().any(Option::is_some) {
+            pal().key_tag
+        } else if knob_resp.as_ref().is_some_and(|r| r.hovered()) {
+            pal().text
+        } else {
+            pal().key_top
+        };
+        painter.circle(kc, unit * 0.45, pal().key_skirt, Stroke::new(2.0_f32, knob_ring));
+        if knob_resp.as_ref().is_some_and(|r| r.clicked()) {
+            self.selected.clear();
+            self.knob_event = Some(self.knob_event.unwrap_or(KnobEvent::RotateRight));
+        }
 
         let factory_layer = self.factory.layers[self.layer as usize];
         let picked = self.pick.and_then(|(_, first)| first);
@@ -1077,6 +1142,10 @@ impl App {
             // Text goes on the top face.
             let rect = theme::keycap(&painter, rect, cap);
             let pad = unit * 0.06;
+            let live = (self.tab == Tab::Performance && self.live_depth).then(|| self.depth.as_ref().map(|d| d[slot])).flatten();
+            if let Some(mm) = live {
+                theme::depth_overlay(&painter, rect, mm, self.travel.ap[slot]);
+            }
             match self.tab {
                 Tab::Performance => {
                     let name = painter.text(rect.left_top() + Vec2::splat(pad), Align2::LEFT_TOP, key.label, small.clone(), pal().key_legend);
@@ -1095,6 +1164,10 @@ impl App {
                         format!("{}: actuation {} mm, press {}, release {}", key.label, theme::mm(ap), theme::mm(ds), theme::mm(us))
                     } else {
                         format!("{}: actuation {} mm", key.label, theme::mm(ap))
+                    };
+                    let tip = match live {
+                        Some(mm) => format!("{tip}\nNow pressed {} mm", theme::mm(mm)),
+                        None => tip,
                     };
                     let _ = r.clone().on_hover_text(tip);
                 }
@@ -1139,6 +1212,7 @@ impl App {
             (Tab::Advanced, _) => self.pick_key(slot),
             (Tab::Lighting | Tab::Profiles | Tab::Settings, _) => {}
             (Tab::Keymap, _) | (Tab::Performance, false) => {
+                self.knob_event = None;
                 let only_this = self.selected.len() == 1 && self.selected.contains(&slot);
                 self.selected.clear();
                 if !only_this {
@@ -1201,6 +1275,67 @@ impl App {
         theme::help(ui, "These apply to every key.");
         ui.separator();
         self.keyboard_switches(ui);
+        ui.separator();
+        self.live_depth_switch(ui);
+    }
+
+    /// Turbo as the keyboard has it now (the official driver doesn't track depth with Turbo on).
+    fn turbo_on_keyboard(&self) -> bool {
+        if self.demo {
+            self.flags.turbo
+        } else {
+            self.identity.as_ref().is_some_and(|i| i.turbo)
+        }
+    }
+
+    fn live_depth_switch(&mut self, ui: &mut egui::Ui) {
+        let turbo = self.turbo_on_keyboard();
+        ui.add_enabled_ui(!turbo, |ui| {
+            theme::switch_row(
+                ui,
+                &mut self.live_depth,
+                "Show live key depth",
+                "Press keys on your keyboard to see how far each one goes down. A key turns teal once it passes its actuation point (amber line).",
+            );
+        });
+        if turbo {
+            theme::help(ui, "Live key depth needs Turbo off (saved to the keyboard).");
+        }
+    }
+
+    /// Starts or stops depth tracking on the device thread to match the page.
+    fn sync_tracking(&mut self, ctx: &egui::Context) {
+        let want = self.live_depth && self.tab == Tab::Performance && self.board == Board::Gen1 && !self.turbo_on_keyboard();
+        if self.demo {
+            self.demo_depth(want, ctx);
+            return;
+        }
+        let want = want && self.identity.as_ref().is_some_and(|i| i.model.is_some());
+        if want != self.tracking_sent {
+            self.dev.send(Cmd::Tracking(want));
+            self.tracking_sent = want;
+            if !want {
+                self.depth = None;
+            }
+        }
+    }
+
+    /// Demo mode: W, A, S and D move up and down so the view can be checked without a keyboard.
+    fn demo_depth(&mut self, on: bool, ctx: &egui::Context) {
+        if !on {
+            self.depth = None;
+            return;
+        }
+        let t = self.started.elapsed().as_secs_f32();
+        let mut d = [0f32; SLOTS];
+        for (i, name) in ["W", "A", "S", "D"].iter().enumerate() {
+            if let Some(k) = self.layout.iter().find(|k| k.label == *name) {
+                let phase = t * 1.3 + i as f32 * 1.7;
+                d[k.slot as usize] = ((phase.sin() * 0.5 + 0.5) * 3.6 - 0.3).clamp(0.0, 3.3);
+            }
+        }
+        self.depth = Some(Box::new(d));
+        ctx.request_repaint_after(std::time::Duration::from_millis(33));
     }
 
     fn travel_card(&mut self, ui: &mut egui::Ui) {
@@ -1275,6 +1410,10 @@ impl App {
     }
 
     fn remap_editor(&mut self, ui: &mut egui::Ui) {
+        if let Some(ev) = self.knob_event {
+            self.knob_editor(ui, ev);
+            return;
+        }
         ui.horizontal(|ui| {
             ui.label("Layer:");
             for l in Layer::ALL {
@@ -1289,7 +1428,7 @@ impl App {
         theme::help(ui, "The keymap can't be read from the keyboard; Save writes all three layers exactly as shown here.");
         ui.separator();
         let Some(&slot) = self.selected.iter().next() else {
-            theme::help(ui, "Click a key on the keyboard, then pick what it should send.");
+            theme::help(ui, "Click a key on the keyboard, then pick what it should send. Click the knob to set what it does.");
             return;
         };
         let s = slot as usize;
@@ -1322,6 +1461,53 @@ impl App {
                             if ui.add(egui::Button::new(item.label).selected(on).min_size(Vec2::new(40.0, 24.0))).clicked() {
                                 self.keymap.set(self.layer, s, item.action);
                                 self.keymap_dirty = true;
+                            }
+                        }
+                    });
+                });
+            }
+        });
+    }
+
+    fn knob_editor(&mut self, ui: &mut egui::Ui, ev: KnobEvent) {
+        if !self.knob_supported() {
+            theme::help(ui, "Knob remapping needs keyboard firmware 0.063 or newer.");
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.strong("Knob");
+            for e in KnobEvent::ALL {
+                let mapped = self.knob[e.index()].is_some();
+                let text = if mapped { format!("{} ●", e.name()) } else { e.name().to_string() };
+                if ui.selectable_label(e == ev, text).clicked() {
+                    self.knob_event = Some(e);
+                }
+            }
+        });
+        let i = ev.index();
+        let current = self.knob[i];
+        ui.horizontal(|ui| {
+            ui.label(format!("{}: {}", ev.name(), current.map_or("knob's own action".to_string(), catalog::label)));
+            if ui.add_enabled(current.is_some(), egui::Button::new("Use knob's own action")).clicked() {
+                self.knob[i] = None;
+                self.knob_dirty = true;
+            }
+            if ui.add_enabled(self.knob.iter().any(Option::is_some), egui::Button::new("Reset all knob actions")).clicked() {
+                self.knob = [None; 6];
+                self.knob_dirty = true;
+            }
+        });
+        theme::help(ui, "The knob works the same on every layer. It can't be read from the keyboard; Save writes all six knob actions as shown here. Click a key to go back to the keys.");
+        ui.separator();
+        ui.scope(|ui| {
+            for cat in CATEGORIES {
+                egui::CollapsingHeader::new(cat.name).id_salt(("knob", cat.name)).default_open(true).show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for item in cat.items {
+                            let on = Some(item.action) == current;
+                            if ui.add(egui::Button::new(item.label).selected(on).min_size(Vec2::new(40.0, 24.0))).clicked() {
+                                self.knob[i] = Some(item.action);
+                                self.knob_dirty = true;
                             }
                         }
                     });
@@ -1734,6 +1920,9 @@ impl App {
 
     fn keyboard_legend(&self) -> Option<&'static str> {
         match self.tab {
+            Tab::Performance if self.live_depth && self.depth.is_some() => {
+                Some("Live key depth: the shading shows how far each key is pressed. Teal = past its actuation point (amber line).")
+            }
             Tab::Performance if self.flags.rapid_trigger => {
                 Some("Big number: actuation point in mm. Small pair: press and release sensitivity (- = keyboard default). Ctrl+click selects more keys.")
             }
@@ -1886,6 +2075,7 @@ impl App {
         if !gen2 {
             self.light_live(ctx);
         }
+        self.sync_tracking(ctx);
     }
 }
 
@@ -2009,6 +2199,7 @@ impl App {
                 model: self.model,
                 settings: self.working_profile(String::new()),
                 lighting: self.light.clone(),
+                knob: Some(self.knob),
             }))),
             Board::Gen1 => None,
         };
@@ -2053,6 +2244,13 @@ impl App {
                             self.lw_replace = s.lw_replace;
                             self.keymap_dirty |= self.keymap != s.keymap;
                             self.keymap = s.keymap;
+                            if let Some(mut k) = g.knob {
+                                if backup::check_knob(&mut k) > 0 {
+                                    notes.push("knob actions not offered by Kraken were left out".into());
+                                }
+                                self.knob_dirty |= self.knob != k;
+                                self.knob = k;
+                            }
                             if backup::check_lighting1(&mut g.lighting) {
                                 notes.push("lighting values adjusted".into());
                             }

@@ -41,12 +41,22 @@
 - [ ] Other gen-2 boards (FB5C A75 Pro, FB5E A75 Master gen-2 / layout K75M, X60) — need layouts from bundle.
 
 ## P2
-- [ ] Lighting (AE 01, custom per-key), knob remap (C1 03), key-depth live view (FD 03 + FD 06). Tester (friend, A75 Master) asked for Lighting 2026-11-08. -> v0.9 gen-1 Lighting tab written (effects + custom per-key + patterns), UNTESTED on hardware; knob/key depth still open. Needs gen-1 bundle `DrunkDeer-Control\tools\captures\antler-beta\index.exKUY8vl.js` (folder request denied by auto mode; user must add folder).
+- [x] Knob remap (C1 03, 6 events) and live key depth (FD 03 + FD 06) — v0.13, cloud-tested (demo), UNTESTED on hardware.
+- [ ] Lighting (AE 01, custom per-key). Tester (friend, A75 Master) asked for Lighting 2026-11-08. -> v0.9 gen-1 Lighting tab written (effects + custom per-key + patterns), UNTESTED on hardware; knob/key depth still open. Needs gen-1 bundle `DrunkDeer-Control\tools\captures\antler-beta\index.exKUY8vl.js` (folder request denied by auto mode; user must add folder).
 - [x] Performance pass 1 (v0.10.3): memory counters, default fonts dropped, atlas width 2048, whole-pixel key fonts. GL config already minimal (no MSAA/depth/stencil); agent already windowless.
 - [x] Performance pass 2 (v0.11.0): software renderer (default) — Linux-verified only.
 - [ ] Windows (builds since v0.11; user: "looks good so far"): check software renderer (window, typing, clipboard, DPI scaling, resize, minimise/restore), memory vs GPU, frame ms maximised.
 - [ ] Other models: extract tables from bundle (tools in C# fork `tools/antler-extract/`).
 - [ ] Drag-rectangle multi-select.
+
+## Web-driver parity (user request 2026-11-11)
+- [x] Gen-1: live key depth (Performance > Show live key depth; needs Turbo off).
+- [x] Gen-1: knob, 6 actions (Keymap > click the knob).
+- [ ] Hardware: both of the above on A75 Master / Ultra (check log for FD 06 frames, C1 acks).
+- [ ] Gen-2: DKS / Rappy Snappy / OKS editors (see protocol-gen2 inventory).
+- [ ] Gen-2: macros (0C/0D, action 112).
+- [ ] Gen-2: light direction, light position, sleep time, live LED preview (DE).
+- [ ] Gen-2: import the official driver's config export.
 
 ## Release / repo
 - [x] v0.12.0 draft release built by CI (zip + .sha256).

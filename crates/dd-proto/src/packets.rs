@@ -198,8 +198,70 @@ pub fn lw_replace(on: bool) -> Packet {
 }
 
 /// Key-depth streaming (`sendTrackingStart/StopData`, high-precision dialect).
+/// The official driver sends `FD 03 01` once per frame: the keyboard answers
+/// with one depth frame (`DepthFrame`) and the driver asks again 20 ms after
+/// the last packet. `FD 03 00` stops.
 pub fn tracking(on: bool) -> Packet {
     packet(&[0xFD, 0x03, on as u8])
+}
+
+/// Keys per `FD 06` depth packet; packet 4 carries the last 6 keys (126 slots).
+const DEPTH_PER_PKT: usize = 30;
+const DEPTH_PKTS: usize = 5;
+/// Raw values below this (0.2 mm) are switch noise; the official driver shows 0.
+const DEPTH_NOISE: u16 = 40;
+
+/// One live key-depth frame (official handler `XC`, reports `FD 06 pkt ...`):
+/// packet `pkt` holds keys `pkt*30..` as u16 LE from byte 3, in 1/200 mm.
+#[derive(Clone, Debug)]
+pub struct DepthFrame {
+    units: [u16; SLOTS],
+    got: [bool; DEPTH_PKTS],
+}
+
+impl Default for DepthFrame {
+    fn default() -> Self {
+        DepthFrame { units: [0; SLOTS], got: [false; DEPTH_PKTS] }
+    }
+}
+
+impl DepthFrame {
+    /// Feeds one input report; returns false if it isn't a depth packet.
+    pub fn feed(&mut self, reply: &[u8]) -> bool {
+        if reply.len() < PAYLOAD_LEN || reply[0] != 0xFD || reply[1] != 0x06 {
+            return false;
+        }
+        let pkt = reply[2] as usize;
+        if pkt >= DEPTH_PKTS {
+            return false;
+        }
+        let count = if pkt == DEPTH_PKTS - 1 { SLOTS - pkt * DEPTH_PER_PKT } else { DEPTH_PER_PKT };
+        for i in 0..count {
+            let v = u16::from_le_bytes([reply[3 + 2 * i], reply[4 + 2 * i]]);
+            self.units[pkt * DEPTH_PER_PKT + i] = if v < DEPTH_NOISE { 0 } else { v };
+        }
+        self.got[pkt] = true;
+        true
+    }
+
+    /// True once the last packet (4) arrived; the official driver re-requests then.
+    pub fn is_complete(&self) -> bool {
+        self.got[DEPTH_PKTS - 1]
+    }
+
+    /// True if any packet arrived.
+    pub fn any(&self) -> bool {
+        self.got.iter().any(|&g| g)
+    }
+
+    /// Depth per slot in mm.
+    pub fn mm(&self) -> [f32; SLOTS] {
+        let mut out = [0f32; SLOTS];
+        for (o, &u) in out.iter_mut().zip(&self.units) {
+            *o = u as f32 / UNITS_PER_MM;
+        }
+        out
+    }
 }
 
 /// What reply completes a request, per the official input handler: most
@@ -222,6 +284,45 @@ mod tests {
 
     fn hex(p: &[u8]) -> String {
         p.iter().map(|b| format!("{b:02x}")).collect::<Vec<_>>().join(" ")
+    }
+
+    #[test]
+    fn tracking_packets() {
+        assert_eq!(&tracking(true)[..4], &[0xFD, 0x03, 0x01, 0x00]);
+        assert_eq!(&tracking(false)[..3], &[0xFD, 0x03, 0x00]);
+        assert!(tracking(true)[3..].iter().all(|&b| b == 0));
+    }
+
+    fn depth_pkt(pkt: u8, values: &[(usize, u16)]) -> Vec<u8> {
+        let mut r = vec![0u8; PAYLOAD_LEN];
+        r[0] = 0xFD;
+        r[1] = 0x06;
+        r[2] = pkt;
+        for &(i, v) in values {
+            r[3 + 2 * i..5 + 2 * i].copy_from_slice(&v.to_le_bytes());
+        }
+        r
+    }
+
+    #[test]
+    fn depth_frame_parses_all_packets() {
+        let mut f = DepthFrame::default();
+        assert!(!f.feed(&[0xFD, 0x07, 0][..]));
+        assert!(!f.feed(&depth_pkt(5, &[])), "no packet 5");
+        // Slot 0 = 1.00 mm (200), slot 29 = 2.5 mm, slot 30 = noise (39 -> 0).
+        assert!(f.feed(&depth_pkt(0, &[(0, 200), (29, 500)])));
+        assert!(f.feed(&depth_pkt(1, &[(0, 39), (1, 660)])));
+        assert!(!f.is_complete());
+        // Packet 4 holds slots 120..125 only; bytes past key 6 are ignored.
+        assert!(f.feed(&depth_pkt(4, &[(5, 300), (6, 999)])));
+        assert!(f.is_complete());
+        let mm = f.mm();
+        assert_eq!(mm[0], 1.0);
+        assert_eq!(mm[29], 2.5);
+        assert_eq!(mm[30], 0.0);
+        assert_eq!(mm[31], 3.3);
+        assert_eq!(mm[125], 1.5);
+        assert_eq!(mm.len(), SLOTS);
     }
 
     #[test]

@@ -2,6 +2,11 @@
 
 Notable changes to Kraken Control. Versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+- **Live key depth (A75 Master / Ultra):** Performance › Show live key depth shades each key as you press it on your keyboard, and marks its actuation point. Needs Turbo off, like the official driver.
+- **Knob (A75 Master / Ultra, firmware 0.063+):** Keymap › click the knob to set Rotate Right / Left, Press, Lift and Press + Rotate actions. Saved with the keymap and included in export / import.
+
 ## [0.12.0] - 2026-11-10
 
 First public release.

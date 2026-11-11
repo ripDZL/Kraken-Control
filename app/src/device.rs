@@ -7,7 +7,8 @@ use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use dd_proto::packets::{self, CommonFlags, Packet, Travel, TravelReadback, REPORT_ID};
+use dd_proto::knob::{self, KnobMap};
+use dd_proto::packets::{self, CommonFlags, DepthFrame, Packet, Travel, TravelReadback, REPORT_ID};
 use dd_proto::rtp::{self, MatchMode, RdtPair};
 use dd_proto::{Identity, Keymap, SLOTS};
 
@@ -50,6 +51,10 @@ pub enum Cmd {
     SetSlotCount(u8),
     /// Gen-1 lighting packets (`dd_proto::led`); acknowledged, not readable.
     Lighting { packets: Vec<Packet>, what: &'static str },
+    /// Live key depth on/off (official "Keystroke tracking").
+    Tracking(bool),
+    /// Gen-1 knob, all six events (acknowledged, not readable).
+    SaveKnob(Box<KnobMap>),
 }
 
 pub enum Event {
@@ -63,6 +68,10 @@ pub enum Event {
     Busy(bool),
     Done(String),
     Error(String),
+    /// Live key depth in mm (only while tracking is on).
+    Depth(Box<Values>),
+    /// Tracking stopped by the worker (no depth replies).
+    TrackingStopped(String),
 }
 
 pub struct Handle {
@@ -81,7 +90,7 @@ pub fn spawn(on_event: impl Fn() + Send + 'static) -> Handle {
     let (ev_tx, rx) = mpsc::channel();
     thread::Builder::new()
         .name("device".into())
-        .spawn(move || Worker { tx: ev_tx, notify: Box::new(on_event), session: None }.run(cmd_rx))
+        .spawn(move || Worker { tx: ev_tx, notify: Box::new(on_event), session: None, tracking: false, depth_misses: 0, last_depth: None }.run(cmd_rx))
         .expect("spawn device thread");
     Handle { tx, rx }
 }
@@ -91,6 +100,12 @@ const IDLE_PING: Duration = Duration::from_secs(3);
 const RECONNECT_EVERY: Duration = Duration::from_millis(1500);
 /// Max wait for the cross-process device lock (the tray agent holds it briefly).
 const LOCK_WAIT_MS: u32 = 3000;
+/// Pause between depth frames (official driver: 20 ms after the last packet).
+const DEPTH_PAUSE: Duration = Duration::from_millis(20);
+/// Wait for one complete depth frame.
+const DEPTH_FRAME_MS: u32 = 150;
+/// Frames in a row without any depth packet before tracking gives up.
+const DEPTH_MAX_MISSES: u8 = 5;
 
 pub struct Session {
     dev: HidDevice,
@@ -187,6 +202,8 @@ impl Session {
         while Instant::now() < deadline {
             let left = deadline.saturating_duration_since(Instant::now()).as_millis() as u32;
             match self.read_payload(left.max(1))? {
+                // A late live-depth packet (FD 06) is never the ack for another FD command.
+                Some(r) if r.len() > 1 && r[0] == 0xFD && r[1] == 0x06 && p[1] != 0x03 => continue,
                 Some(r) if r.first() == Some(&b0) && b1.is_none_or(|b| r.get(1) == Some(&b)) => return Ok(r),
                 Some(_) => continue,
                 None => break,
@@ -257,6 +274,23 @@ impl Session {
         Ok(Snapshot { identity: self.identity.clone(), travel, lw, rdt, slots })
     }
 
+    /// Requests one live depth frame (`FD 03 01` -> `FD 06` x5). `None` = no depth packet came.
+    fn depth_frame(&self) -> io::Result<Option<Values>> {
+        self.write(&packets::tracking(true))?;
+        let mut frame = DepthFrame::default();
+        let deadline = Instant::now() + Duration::from_millis(DEPTH_FRAME_MS as u64);
+        while !frame.is_complete() && Instant::now() < deadline {
+            let left = deadline.saturating_duration_since(Instant::now()).as_millis() as u32;
+            match self.read_payload(left.max(1))? {
+                Some(r) => {
+                    frame.feed(&r);
+                }
+                None => break,
+            }
+        }
+        Ok(frame.any().then(|| frame.mm()))
+    }
+
     fn write_all(&self, pkts: &[Packet]) -> io::Result<()> {
         self.drain()?;
         for (i, p) in pkts.iter().enumerate() {
@@ -270,6 +304,10 @@ struct Worker {
     tx: Sender<Event>,
     notify: Box<dyn Fn() + Send>,
     session: Option<Session>,
+    /// Live key depth requested by the UI.
+    tracking: bool,
+    depth_misses: u8,
+    last_depth: Option<Values>,
 }
 
 impl Worker {
@@ -287,11 +325,16 @@ impl Worker {
                 self.locked(Self::connect);
                 last_io = Instant::now();
             }
-            match rx.recv_timeout(Duration::from_millis(250)) {
+            let wait = if self.tracking && self.session.is_some() { DEPTH_PAUSE } else { Duration::from_millis(250) };
+            match rx.recv_timeout(wait) {
                 Ok(cmd) => {
                     if !self.locked(|w| w.handle(cmd)) {
                         self.emit(Event::Error(busy().to_string()));
                     }
+                    last_io = Instant::now();
+                }
+                Err(RecvTimeoutError::Timeout) if self.tracking && self.session.is_some() => {
+                    self.locked(Self::depth);
                     last_io = Instant::now();
                 }
                 Err(RecvTimeoutError::Timeout) => {
@@ -394,10 +437,63 @@ impl Worker {
     fn lost(&mut self, e: io::Error) {
         log::line(format!("disconnected: {e}"));
         self.session = None;
+        self.tracking = false;
         self.emit(Event::Disconnected(e.to_string()));
     }
 
+    /// One live depth frame; emits only when something moved.
+    fn depth(&mut self) {
+        let Some(s) = self.session.as_ref() else { return };
+        s.quiet.set(true);
+        let res = s.depth_frame();
+        s.quiet.set(false);
+        match res {
+            Ok(Some(v)) => {
+                self.depth_misses = 0;
+                if self.last_depth.as_ref() != Some(&v) {
+                    self.last_depth = Some(v);
+                    self.emit(Event::Depth(Box::new(v)));
+                }
+            }
+            Ok(None) => {
+                self.depth_misses += 1;
+                if self.depth_misses >= DEPTH_MAX_MISSES {
+                    self.tracking = false;
+                    log::line("live key depth: no FD 06 replies, stopped");
+                    self.emit(Event::TrackingStopped("The keyboard didn't send live key depth. Its firmware may not support it.".into()));
+                }
+            }
+            Err(e) if is_disconnect(&e) => self.lost(e),
+            Err(e) => {
+                self.tracking = false;
+                log::line(format!("live key depth stopped: {e}"));
+                self.emit(Event::TrackingStopped(format!("Live key depth stopped: {e}")));
+            }
+        }
+    }
+
+    fn set_tracking(&mut self, on: bool) {
+        if on == self.tracking {
+            return;
+        }
+        self.tracking = on;
+        self.depth_misses = 0;
+        self.last_depth = None;
+        log::line(if on { "live key depth on" } else { "live key depth off" });
+        if !on {
+            if let Some(s) = &self.session {
+                // Official driver sends FD 03 00 when tracking is switched off.
+                let _ = s.write(&packets::tracking(false));
+                let _ = s.drain();
+            }
+        }
+    }
+
     fn handle(&mut self, cmd: Cmd) {
+        if let Cmd::Tracking(on) = cmd {
+            self.set_tracking(on && self.session.as_ref().is_some_and(|s| s.identity.model.is_some()));
+            return;
+        }
         if self.session.as_ref().is_none_or(|s| s.identity.model.is_none()) {
             self.emit(Event::Error("No supported keyboard connected".into()));
             return;
@@ -511,6 +607,12 @@ impl Worker {
                 s.write_all(&packets)?;
                 Ok(format!("{what} sent (acknowledged; lighting can't be read back)"))
             }
+            Cmd::SaveKnob(map) => {
+                s.write_all(&knob::packets(&map))?;
+                Ok("Saved knob (acknowledged; the knob can't be read back)".into())
+            }
+            // Handled in `handle` (no busy/done messages).
+            Cmd::Tracking(_) => Ok(String::new()),
         }
     }
 }

@@ -14,6 +14,7 @@
 pub mod catalog;
 pub mod gen2;
 pub mod keymap;
+pub mod knob;
 pub mod led;
 pub mod model;
 pub mod packets;

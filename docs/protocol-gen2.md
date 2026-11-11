@@ -68,3 +68,10 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - Official lighting setter only ever writes `[12] = 0` (single colour) when a colour is chosen; never 1. Backlight off = brightness 0.
 - Per-key colours (effect 0 "Custom"): cmd 0A read / 0B write, 128 × RGB at 512·profile (official writes 384 B).
 - Public info type bytes read `FF FF FF FF` on fw 121 (unset).
+
+## Web-driver feature inventory (bundle `gen2-bundle/app_page-feab963f2440235f.js`, js-beautify 1.15.1 line refs)
+- Device API (L480-990, class `j`): getInfo 85[3], getBase 85[4], getFunc/setFunc 05/06 (64 B per profile), key matrix 07/08 R, 09 W, macros 0C R / 0D W (2048 B per slot), key colours 0A/0B, trigger A0/A1 (1024 B/profile, 8 B/key), DKS A2/A3 (768 B/profile, 24 B), MT A4/A5 (256 B... index*6), TGL A6/A7 (128 B), live LED colours DE (384 B = 128 x RGB, read-only, polled every 300 ms for the preview, L18957), profile select 0E.
+- Never used by Kraken: calibration A8/A9 (input reports 0xA0 = calibration stream), reset EE, boot mode 95[06...], ROM erase/write 81/83, firmware update.
+- Func-byte setters (L2346-2390): func[7] bit0 Berserk mode, bits1 stability (Adaptive Stable), bit3 debug mode key, bits5-7 debounce; func[4] low nibble polling, high nibble tick rate; func[1] system mode.
+- Live depth: none on gen-2 (the Test tab uses browser keydown/keyup, L20835).
+- Gaps vs Kraken (2026-11-11): DKS / Rappy Snappy / OKS editors, macros (record + bind), light direction, light position, sleep time, live LED preview (DE), import of the official config export.
