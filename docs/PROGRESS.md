@@ -90,3 +90,8 @@
 - Release pipeline: `.github/workflows/release.yml` + `.github/release-notes.md`; zip now ships LICENSE; README Install points to Releases; README-TESTERS reworded for public use (issues link). Tag v0.12.0 pushed -> first draft release.
 - Release v0.12.0: Release run passed on windows-latest (tests green on Windows); draft has zip (exe 3.1 MB) + .sha256, checksum verified. Draft body "What's new" = CHANGELOG 0.12.0 (paste manually: session can't edit releases or repo settings).
 - Repo polish: README header (badges, links, gallery: keymap, advanced-gen2, lighting-gen2-plumb), CI workflow `ci.yml` (Windows clippy -D warnings + tests), issue forms (bug/feature), PR template, CONTRIBUTING.md, SECURITY.md, CHANGELOG.md, `docs/social-preview.png` (upload in Settings > Social preview).
+
+## 2026-11-11 (website)
+- `site/`: one-page site (plum + saffron from icon / Black-Plumb; Atkinson Hyperlegible Next + JetBrains Mono, self-hosted woff2 + OFL). Hero: draggable keycap + travel gauge simulating actuation point and Rapid Trigger (press/release markers, press counter; mouse, touch, arrows/Space). Sections: screenshot, features (zoomed crops), keyboards, safety, install, FAQ. Download links use the latest release asset via api.github.com.
+- `.github/workflows/pages.yml` deploys on site/screenshot/icon changes. Pages enabled (source GitHub Actions) via built-in browser.
+- Checked: Playwright at 320/360/390/768/1024/1280/1440 (no horizontal scroll, no console errors), drag and keyboard control of the demo.

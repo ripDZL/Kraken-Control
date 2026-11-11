@@ -19,6 +19,7 @@
 
 <p align="center">
   <a href="https://github.com/ripDZL/Kraken-Control/releases"><b>Download</b></a> &nbsp;|&nbsp;
+  <a href="https://ripdzl.github.io/Kraken-Control/">Website</a> &nbsp;|&nbsp;
   <a href="#features">Features</a> &nbsp;|&nbsp;
   <a href="#safety">Safety</a> &nbsp;|&nbsp;
   <a href="#build">Build from source</a> &nbsp;|&nbsp;
@@ -166,6 +167,7 @@ crates/dd-proto   wire protocol for both keyboard generations (pure, no I/O, tes
 app               the Windows app: UI, HID transport, tray agent, software renderer
 docs              protocol notes, architecture, project status
 packaging         portable zip build
+site              website (GitHub Pages)
 ```
 
 Settings live in `%APPDATA%\KrakenControl` (`state.json`, `agent.json`,

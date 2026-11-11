@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Kraken Control: a native Windows app for DrunkDeer A75 keyboards</title>
+  <meta name="description" content="Set actuation and Rapid Trigger per key, remap layers, paint lighting and switch profiles on DrunkDeer A75 keyboards. One small Windows exe, nothing to install. Unofficial, open source.">
+  <meta name="theme-color" content="#2B1E37">
+  <link rel="icon" href="img/kraken.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="img/kraken.png">
+  <link rel="canonical" href="https://ripdzl.github.io/Kraken-Control/">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Kraken Control">
+  <meta property="og:description" content="A native Windows app for DrunkDeer A75 keyboards: per-key actuation, Rapid Trigger, remapping, lighting and profiles.">
+  <meta property="og:url" content="https://ripdzl.github.io/Kraken-Control/">
+  <meta property="og:image" content="https://ripdzl.github.io/Kraken-Control/img/social-preview.png">
+  <meta property="og:image:width" content="1280">
+  <meta property="og:image:height" content="640">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="preload" href="fonts/atkinson-hyperlegible-next.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="style.css">
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="top">
+    <div class="wrap top-row">
+      <a class="brand" href="./" aria-label="Kraken Control home">
+        <img src="img/kraken.svg" alt="" width="36" height="36">
+        <span>Kraken Control</span>
+      </a>
+      <nav class="nav" aria-label="Main">
+        <a href="#features">Features</a>
+        <a href="#keyboards">Keyboards</a>
+        <a href="#safety">Safety</a>
+        <a href="#faq">FAQ</a>
+        <a href="https://github.com/ripDZL/Kraken-Control">GitHub</a>
+      </nav>
+      <a class="btn btn-small js-download" href="https://github.com/ripDZL/Kraken-Control/releases/latest">Download</a>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <h1>The DrunkDeer driver, as a real Windows app.</h1>
+          <p class="lede">Set actuation and Rapid Trigger for every key, remap layers, paint the lighting and switch profiles on your A75. One small exe, nothing to install, and it never touches firmware.</p>
+          <div class="cta">
+            <a class="btn btn-big js-download" href="https://github.com/ripDZL/Kraken-Control/releases/latest">Download for Windows</a>
+            <p class="cta-meta"><span class="js-release-meta">Windows 10 and 11, portable zip</span><br>
+              <a href="https://github.com/ripDZL/Kraken-Control">Source code on GitHub</a></p>
+          </div>
+          <p class="fine">Unofficial. Not made by or affiliated with DrunkDeer.</p>
+        </div>
+
+        <section class="demo" aria-labelledby="demo-title">
+          <h2 id="demo-title">Try Rapid Trigger</h2>
+          <p class="demo-help">Drag the key down, then wiggle it up and down. With Rapid Trigger on, a small lift releases the key and a small push presses it again. Keyboard: focus the key and use the arrow keys, or hold Space.</p>
+
+          <div class="rig">
+            <div class="key-well">
+              <div class="key" id="key" tabindex="0" role="slider"
+                   aria-label="Key depth" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" aria-valuetext="0.00 millimetres, released">
+                <div class="key-cap"><span>W</span></div>
+              </div>
+              <div class="key-shadow" aria-hidden="true"></div>
+            </div>
+
+            <div class="gauge" aria-hidden="true">
+              <div class="gauge-track">
+                <div class="gauge-fill" id="fill"></div>
+                <div class="mark mark-ap" id="markAp"><span>Actuation</span></div>
+                <div class="mark mark-rt" id="markRt"><span id="markRtLabel">Release</span></div>
+              </div>
+              <ol class="gauge-scale">
+                <li>0</li><li>1</li><li>2</li><li>3</li><li>4 mm</li>
+              </ol>
+            </div>
+          </div>
+
+          <div class="readout" aria-live="polite">
+            <div><span class="label">Depth</span> <span class="num" id="depth">0.00</span><span class="unit">mm</span></div>
+            <div><span class="state" id="state">Released</span></div>
+            <div><span class="label">Presses</span> <span class="num" id="count">0</span></div>
+          </div>
+
+          <div class="controls">
+            <label class="ctl">
+              <span>Actuation point <output id="apOut">1.20 mm</output></span>
+              <input type="range" id="ap" min="0.1" max="4" step="0.1" value="1.2">
+            </label>
+            <label class="ctl ctl-check">
+              <input type="checkbox" id="rt" checked>
+              <span>Rapid Trigger</span>
+            </label>
+            <label class="ctl">
+              <span>Sensitivity <output id="sensOut">0.15 mm</output></span>
+              <input type="range" id="sens" min="0.05" max="1" step="0.05" value="0.15">
+            </label>
+          </div>
+          <p class="demo-note">Ranges from the A75 Ultra (2025): actuation 0.1–4.0 mm. The app sets these per key.</p>
+        </section>
+      </div>
+    </section>
+
+    <section class="shot-band" aria-label="App screenshot">
+      <div class="wrap">
+        <figure class="window">
+          <img src="img/performance.png" width="1180" height="760" alt="Kraken Control's Performance page: a full keyboard map with actuation values on each key and settings for the selected keys.">
+          <figcaption>Performance page in the Dark Grey theme. Pick keys on the map, set their travel, press Save to keyboard.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <section id="features" class="features">
+      <div class="wrap">
+        <h2 class="section-title">What you can do</h2>
+
+        <article class="row">
+          <div class="row-text">
+            <h3>Set every key on its own</h3>
+            <p>Give WASD a hair trigger and keep the rest of the board relaxed. Set the actuation point and Rapid Trigger press and release sensitivity per key, with dead zones on the 2025 A75 Ultra.</p>
+            <p>Click keys on the map to select them, or use the WASD, All and None shortcuts.</p>
+          </div>
+          <div class="row-media crop crop-keys">
+            <img src="img/performance.png" width="1180" height="760" alt="" loading="lazy">
+          </div>
+        </article>
+
+        <article class="row">
+          <div class="row-text">
+            <h3>Remap any key, on every layer</h3>
+            <p>Pick from letters, symbols, F-keys, navigation, media and mouse keys. The original A75 has Default, Fn and Fn2 layers; the 2025 A75 Ultra has four layers and a remappable knob.</p>
+            <p>On the 2025 A75 Ultra you can also add SOCD pairs, Mod Tap and Toggle keys. Functions that could harm the keyboard are never offered.</p>
+          </div>
+          <div class="row-media crop crop-keymap">
+            <img src="img/keymap.png" width="1180" height="760" alt="" loading="lazy">
+          </div>
+        </article>
+
+        <article class="row">
+          <div class="row-text">
+            <h3>Paint the lighting</h3>
+            <p>Choose an effect, brightness, speed and colour, or paint colours key by key. Lighting changes show on the keyboard straight away.</p>
+            <p>Save a look as a preset and switch between presets with one click.</p>
+          </div>
+          <div class="row-media crop crop-light">
+            <img src="img/lighting-gen2-plumb.png" width="1180" height="760" alt="" loading="lazy">
+          </div>
+        </article>
+
+        <div class="pair">
+          <article>
+            <h3>Take your setup anywhere</h3>
+            <p>Switch the keyboard's onboard profiles, and on the original A75 keep more profiles on your PC. Move to another PC exports every setting to one file; import it on a fresh install and every value is checked before anything reaches the keyboard.</p>
+          </article>
+          <article>
+            <h3>Easy on your PC</h3>
+            <p>The window is drawn on the processor, so no graphics driver is loaded. The optional tray helper has no window at all: it switches the original A75's onboard profile when you open a game, and can start with Windows.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="keyboards" class="keyboards">
+      <div class="wrap narrow">
+        <h2 class="section-title">Supported keyboards</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th scope="col">Keyboard</th><th scope="col">USB ID</th><th scope="col">Status</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>A75 Master, A75 Ultra (original)</td><td>352D</td><td><span class="ok">Supported</span></td></tr>
+              <tr><td>A75 Ultra (2025)</td><td>19F5:FB3E</td><td><span class="ok">Supported</span></td></tr>
+              <tr><td>Other DrunkDeer models</td><td>&ndash;</td><td>Detected, not supported yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Have a model that isn't supported? <a href="https://github.com/ripDZL/Kraken-Control/issues/new/choose">Open an issue</a> and attach the log; it helps add the next one.</p>
+      </div>
+    </section>
+
+    <section id="safety" class="safety">
+      <div class="wrap narrow">
+        <h2 class="section-title">Built not to brick your keyboard</h2>
+        <ul class="checks">
+          <li><strong>Never writes firmware, factory resets or calibration.</strong> Kraken Control doesn't send those commands, and the key picker never offers them.</li>
+          <li><strong>Saves only when you say so.</strong> Lighting applies live; everything else waits for Save to keyboard, and only what changed is sent.</li>
+          <li><strong>Checks its work.</strong> Writes are read back from the keyboard wherever the keyboard can report them.</li>
+          <li><strong>Open source.</strong> MIT licensed. Every download is built from the published code by GitHub Actions and listed with its SHA-256 checksum.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section id="install" class="install">
+      <div class="wrap narrow">
+        <h2 class="section-title">Install in a minute</h2>
+        <ol class="steps">
+          <li><strong>Download the zip</strong> from the <a class="js-download" href="https://github.com/ripDZL/Kraken-Control/releases/latest">latest release</a>.</li>
+          <li><strong>Unzip it</strong> somewhere you can write to, like Documents. Not Program Files.</li>
+          <li><strong>Close the DrunkDeer web driver</strong>, then run <code>kraken-control.exe</code>.</li>
+        </ol>
+        <p class="note">The exe isn't code-signed yet, so Windows SmartScreen may warn the first time. Click <em>More info</em>, then <em>Run anyway</em>. To check the download, compare <code>Get-FileHash</code> in PowerShell with the checksum on the release page.</p>
+      </div>
+    </section>
+
+    <section id="faq" class="faq">
+      <div class="wrap narrow">
+        <h2 class="section-title">Questions</h2>
+        <details>
+          <summary>Is this made by DrunkDeer?</summary>
+          <p>No. Kraken Control is an independent, open-source project. It talks to the keyboard the same way the official web driver does.</p>
+        </details>
+        <details>
+          <summary>Can I use it with the web driver open?</summary>
+          <p>Close the web driver tab and any other keyboard app first. The keyboard handles one program at a time.</p>
+        </details>
+        <details>
+          <summary>Where are my settings stored?</summary>
+          <p>In the <code>data</code> folder next to the exe. Nothing goes in the registry unless you turn on Start with Windows. To move to another PC, use Profiles, then Move to another PC.</p>
+        </details>
+        <details>
+          <summary>How do I remove it?</summary>
+          <p>If you turned on Start with Windows, turn it off in the app. Then delete the folder.</p>
+        </details>
+        <details>
+          <summary>Does it run on macOS or Linux?</summary>
+          <p>Not yet. It is a Windows app; the code that talks to the keyboard uses Windows' own USB functions.</p>
+        </details>
+        <details>
+          <summary>Something doesn't work. What should I send?</summary>
+          <p><a href="https://github.com/ripDZL/Kraken-Control/issues/new/choose">Open a bug report</a> with your keyboard model and attach <code>data\log.txt</code>.</p>
+        </details>
+      </div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <div class="wrap foot-row">
+      <div class="foot-brand">
+        <img src="img/kraken.svg" alt="" width="44" height="44">
+        <p>Kraken Control is open source under the MIT licence.<br>Unofficial; not made by or affiliated with DrunkDeer.</p>
+      </div>
+      <nav class="foot-links" aria-label="Project">
+        <a href="https://github.com/ripDZL/Kraken-Control">GitHub</a>
+        <a href="https://github.com/ripDZL/Kraken-Control/releases">Releases</a>
+        <a href="https://github.com/ripDZL/Kraken-Control/blob/main/CHANGELOG.md">Changelog</a>
+        <a href="https://github.com/ripDZL/Kraken-Control/issues/new/choose">Report a problem</a>
+      </nav>
+    </div>
+  </footer>
+</body>
+</html>

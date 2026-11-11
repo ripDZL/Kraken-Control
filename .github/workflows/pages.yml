@@ -1,0 +1,49 @@
+# Publishes the website in site/ to GitHub Pages:
+# https://ripdzl.github.io/Kraken-Control/
+# Screenshots, the icon and the social preview are copied from the repo so
+# there is one copy of each.
+
+name: Website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "docs/screenshots/**"
+      - "docs/social-preview.png"
+      - "app/res/kraken.svg"
+      - "app/res/kraken.png"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Assemble site
+        run: |
+          mkdir -p _site/img
+          cp -r site/. _site/
+          cp docs/screenshots/*.png docs/social-preview.png app/res/kraken.svg app/res/kraken.png _site/img/
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
