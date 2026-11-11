@@ -51,7 +51,7 @@
 ## Release / repo
 - [x] v0.12.0 draft release built by CI (zip + .sha256).
 - [x] Published v0.12.0 (2026-11-10, Latest) with CHANGELOG notes; topics set; private vulnerability reporting on.
-- [ ] Repo settings (user): upload `docs/social-preview.png` (Settings > General > Social preview). Scripted upload from the built-in browser did not stick.
+- [x] Social preview set to `docs/social-preview.png` (verified identical SHA-256).
 - [ ] Optional: release workflow fills What's new from CHANGELOG.
 
 ## Back-up (v0.12.0)
