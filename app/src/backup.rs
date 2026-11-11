@@ -155,6 +155,19 @@ pub fn parse(text: &str) -> Result<File, String> {
         version: u32,
     }
     let head: Head = serde_json::from_str(text).map_err(|_| "This isn't a Kraken Control profile file.".to_string())?;
+    if head.format.is_empty() {
+        if let Some(official) = parse_official(text) {
+            let (g, created) = official?;
+            return Ok(File {
+                format: FORMAT.into(),
+                version: VERSION,
+                app_version: String::new(),
+                created,
+                keyboard: Some(Keyboard::Gen2(Box::new(g))),
+                kraken: None,
+            });
+        }
+    }
     if head.format != FORMAT {
         return Err("This isn't a Kraken Control profile file.".into());
     }
@@ -162,6 +175,129 @@ pub fn parse(text: &str) -> Result<File, String> {
         return Err(format!("This file is from a newer Kraken Control (format {}). Update Kraken Control to import it.", head.version));
     }
     serde_json::from_str(text).map_err(|e| format!("The file is damaged or incomplete ({e})."))
+}
+
+/// `Gen2::board` of a file exported by the official 2025 web driver (Profile > Export).
+/// That file doesn't say which keyboard it is from; the layout checks still apply.
+pub const OFFICIAL_BOARD: &str = "official driver export";
+
+/// A profile exported by the official gen-2 web driver: `{ name, travelKeys,
+/// advancedKeys, userKeys, exportTime }` (see docs/protocol-gen2.md "Official
+/// config export"). `None` if `text` isn't one. Tables and advanced keymap
+/// entries are rebuilt from the `advancedKeys` list the way the driver's own
+/// import does; everything then goes through the normal import checks.
+pub fn parse_official(text: &str) -> Option<Result<(Gen2, String), String>> {
+    use dd_proto::gen2::{self, Action};
+    use serde_json::Value;
+    let v: Value = serde_json::from_str(text).ok()?;
+    let user = v.get("userKeys")?.as_object()?;
+    let travel = v.get("travelKeys")?.as_array()?;
+    let num = |v: &Value, key: &str| v.get(key).and_then(Value::as_f64).map_or(0.0, |f| f.max(0.0));
+    let byte = |v: &Value, key: &str| num(v, key).min(255.0) as u8;
+    let key = |v: Option<&Value>| v.map_or(Action::default(), |k| Action { kind: byte(k, "type"), code1: byte(k, "code1"), code2: byte(k, "code2") });
+    let bad = |what: &str| format!("This official driver file can't be used: {what}.");
+    let convert = || -> Result<Gen2, String> {
+        if travel.len() < gen2::KEYS {
+            return Err(bad("it has no key travel data"));
+        }
+        let keys = travel[..gen2::KEYS]
+            .iter()
+            .map(|t| Gen2Key {
+                actuation: num(t, "key_actuation") as f32 / 100.0,
+                mode: byte(t, "key_mode") & 0x0F,
+                press: num(t, "rt_press") as f32 / 100.0,
+                release: num(t, "rt_release") as f32 / 100.0,
+                top_dz: num(t, "press_deadzone") as f32 / 100.0,
+                bottom_dz: num(t, "release_deadzone") as f32 / 100.0,
+                priority: byte(t, "priority"),
+            })
+            .collect();
+        let mut keymap = Vec::new();
+        for layer in 0..4 {
+            let list = user.get(&layer.to_string()).and_then(Value::as_array).filter(|l| l.len() >= gen2::KEYS).ok_or_else(|| bad("a key layer is missing or too short"))?;
+            let mut actions: Vec<[u8; 3]> = list[..gen2::KEYS].iter().map(|k| key(Some(k))).map(|a| [a.kind, a.code1, a.code2]).collect();
+            // Advanced entries are rebuilt from the list below; one left over here
+            // gets an index no table has, so the import puts the key back to factory.
+            for a in actions.iter_mut().filter(|a| (gen2::kind::DKS..=gen2::kind::OKS).contains(&a[0])) {
+                a[1] = 255;
+            }
+            keymap.push(actions);
+        }
+        let (mut mt, mut tgl, mut dks) = (vec![0u8; gen2::MT_LEN], vec![0u8; gen2::TGL_LEN], vec![0u8; gen2::DKS_LEN]);
+        let (mut n_mt, mut n_tgl, mut n_dks) = (0usize, 0usize, 0usize);
+        let full = || bad("it has more advanced keys than the keyboard holds");
+        for item in v.get("advancedKeys").and_then(Value::as_array).map(Vec::as_slice).unwrap_or_default() {
+            let (layer, a, b) = (num(item, "layer") as usize, num(item, "index1") as usize, num(item, "index2") as usize);
+            if layer >= 4 || a >= gen2::KEYS || b >= gen2::KEYS {
+                return Err(bad("an advanced key points outside the keyboard"));
+            }
+            match item.get("type").and_then(Value::as_str).unwrap_or("") {
+                "dks" => {
+                    if n_dks >= gen2::ADV_ENTRIES {
+                        return Err(full());
+                    }
+                    let mut d = gen2::Dks::default();
+                    for (i, p) in item.get("dksPoint").and_then(Value::as_array).into_iter().flatten().take(4).enumerate() {
+                        d.points[i] = p.as_f64().map_or(0, |f| f.clamp(0.0, 255.0) as u8);
+                    }
+                    for (i, k) in item.get("dksKeys").and_then(Value::as_array).into_iter().flatten().take(4).enumerate() {
+                        // The driver keeps continuation values under long holds; Kraken's spans don't.
+                        let [ds, mut de, mut us, ue] = ["downStart", "downEnd", "upStart", "upEnd"].map(|f| byte(k, f));
+                        if ds >= 3 {
+                            de = 0;
+                        }
+                        if ds >= 4 || de >= 3 {
+                            us = 0;
+                        }
+                        d.binds[i] = gen2::DksBind { action: key(k.get("key")), spans: gen2::dks_normalize([ds, de, us, ue]) };
+                    }
+                    gen2::set_dks_entry(&mut dks, n_dks, &d);
+                    keymap[layer][a] = [gen2::kind::DKS, n_dks as u8, 0];
+                    n_dks += 1;
+                }
+                "tgl" => {
+                    if n_tgl >= gen2::ADV_ENTRIES {
+                        return Err(full());
+                    }
+                    gen2::set_tgl_entry(&mut tgl, n_tgl, key(item.get("tglKey")));
+                    keymap[layer][a] = [gen2::kind::TGL, n_tgl as u8, 0];
+                    n_tgl += 1;
+                }
+                "mt" => {
+                    if n_mt >= gen2::ADV_ENTRIES {
+                        return Err(full());
+                    }
+                    gen2::set_mt_entry(&mut mt, n_mt, key(item.get("mtClickKey")), key(item.get("mtDownKey")));
+                    let ms = match num(item, "mtTime") {
+                        0.0 => 100.0,
+                        ms => ms,
+                    };
+                    keymap[layer][a] = [gen2::kind::MT, n_mt as u8, (ms / 10.0).min(255.0) as u8];
+                    n_mt += 1;
+                }
+                pair @ ("rs" | "socd" | "oks") => {
+                    if n_mt + 2 > gen2::ADV_ENTRIES {
+                        return Err(full());
+                    }
+                    let kind = match pair {
+                        "rs" => gen2::kind::RS,
+                        "socd" => gen2::kind::SOCD,
+                        _ => gen2::kind::OKS,
+                    };
+                    let (k1, k2) = (key(item.get("key1")), key(item.get("key2")));
+                    gen2::set_mt_entry(&mut mt, n_mt, k1, k2);
+                    gen2::set_mt_entry(&mut mt, n_mt + 1, k2, k1);
+                    keymap[layer][a] = [kind, n_mt as u8, b as u8];
+                    keymap[layer][b] = [kind, n_mt as u8 + 1, a as u8];
+                    n_mt += 2;
+                }
+                _ => {}
+            }
+        }
+        Ok(Gen2 { board: OFFICIAL_BOARD.into(), keys, keymap, settings: BTreeMap::new(), colors: Vec::new(), mt, tgl, dks, macros: Vec::new() })
+    };
+    let created = v.get("exportTime").and_then(Value::as_str).unwrap_or_default().to_string();
+    Some(convert().map(|g| (g, created)))
 }
 
 pub fn read(path: &Path) -> Result<File, String> {
@@ -462,5 +598,66 @@ mod tests {
         assert_eq!(k[0], Some(offered));
         assert_eq!(k[1], None);
         assert_eq!(k[2], Some(KeyAction::NONE));
+    }
+
+    #[test]
+    fn official_export_is_converted() {
+        use serde_json::json;
+        let key = |t: u8, c1: u8, c2: u8| json!({"type": t, "code1": c1, "code2": c2, "name": "x"});
+        let layer = |n: u8| -> Vec<serde_json::Value> { (0..128u8).map(|i| key(16, 0, 4 + (i + n) % 60)).collect() };
+        let mut l0 = layer(0);
+        l0[5] = key(148, 0, 6); // SOCD entry as it was at export time (also in the list)
+        l0[9] = key(146, 7, 20); // Mod Tap entry with nothing in the list
+        let travel: Vec<_> = (0..128)
+            .map(|_| json!({"switch_type": 0, "key_mode": 1, "priority": 0, "key_max_length": 4, "key_actuation": 150, "pressPrecision": 0, "releasePrecision": 0,
+                "rt_press": 30, "rt_release": 25, "press_deadzone": 10, "release_deadzone": 5, "deadzone_status": true}))
+            .collect();
+        let file = json!({
+            "name": "Game", "exportTime": "2026-11-11T10:00:00.000Z",
+            "travelKeys": travel,
+            "userKeys": {"0": l0, "1": layer(1), "2": layer(2), "3": layer(3)},
+            "advancedKeys": [
+                {"type": "socd", "layer": 0, "index1": 5, "index2": 6, "key1": key(16, 0, 4), "key2": key(16, 0, 7)},
+                {"type": "mt", "layer": 0, "index1": 12, "mtClickKey": key(16, 0, 41), "mtDownKey": key(16, 1, 0), "mtTime": 200},
+                {"type": "tgl", "layer": 0, "index1": 20, "tglKey": key(16, 0, 44)},
+                {"type": "dks", "layer": 0, "index1": 30, "dksPoint": [10, 30, 30, 10], "dksKeys": [
+                    {"key": key(16, 0, 4), "downStart": 3, "downEnd": 2, "upStart": 0, "upEnd": 0},
+                    {"key": key(16, 0, 5), "downStart": 0, "downEnd": 0, "upStart": 0, "upEnd": 1}]},
+            ]
+        });
+        let f = parse(&file.to_string()).unwrap();
+        assert_eq!(f.created, "2026-11-11T10:00:00.000Z");
+        assert!(f.kraken.is_none());
+        let Some(Keyboard::Gen2(g)) = f.keyboard else { panic!("gen-2 keyboard part expected") };
+        assert_eq!(g.board, OFFICIAL_BOARD);
+        assert!(g.colors.is_empty() && g.settings.is_empty() && g.macros.is_empty());
+        // Travel: 0.01 mm units -> mm.
+        assert_eq!(g.keys.len(), 128);
+        let k = g.keys[0];
+        assert_eq!((k.mode, k.priority), (1, 0));
+        for (got, want) in [(k.actuation, 1.5), (k.press, 0.3), (k.release, 0.25), (k.top_dz, 0.1), (k.bottom_dz, 0.05)] {
+            assert!((got - want).abs() < 1e-6, "{got} vs {want}");
+        }
+        // Keymap entries and tables rebuilt from the list, in list order (pairs take two MT entries).
+        assert_eq!(g.keymap.len(), 4);
+        assert_eq!(g.keymap[0][5], [148, 0, 6]);
+        assert_eq!(g.keymap[0][6], [148, 1, 5]);
+        assert_eq!(g.keymap[0][12], [146, 2, 20]);
+        assert_eq!(g.keymap[0][20], [145, 0, 0]);
+        assert_eq!(g.keymap[0][30], [144, 0, 0]);
+        assert_eq!(g.keymap[0][9], [146, 255, 20]); // not in the list: index no table has
+        assert_eq!(g.keymap[1][0], [16, 0, 5]);
+        assert_eq!(g.mt[..18], [16, 0, 4, 16, 0, 7, 16, 0, 7, 16, 0, 4, 16, 0, 41, 16, 1, 0]);
+        assert_eq!(g.tgl[..3], [16, 0, 44]);
+        // DKS: the driver's 3 + continuation 2 is one hold over three stages.
+        assert_eq!(g.dks[..14], [10, 30, 30, 10, 16, 0, 4, 0x1F, 0, 16, 0, 5, 0x00, 0x02]);
+        assert_eq!(dd_proto::gen2::dks_entry(&g.dks, 0).binds[0].spans, [3, 0, 0, 0]);
+
+        // Other JSON is neither format; a short layer is refused with a reason.
+        assert!(parse_official("{\"format\":\"x\"}").is_none());
+        assert!(parse("{}").unwrap_err().contains("Kraken Control profile"));
+        let mut short = file.clone();
+        short["userKeys"]["2"] = json!([key(16, 0, 4)]);
+        assert!(parse(&short.to_string()).unwrap_err().contains("key layer"));
     }
 }

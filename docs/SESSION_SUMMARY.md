@@ -30,9 +30,8 @@ Current state and handoff. History is in PROGRESS.md.
 
 ## Next
 1. User tests on hardware: gen-1 live key depth (Performance) and knob (Keymap), then the v0.12.0 zip items still open.
-2. Web-driver parity, gen-2 (A75 Ultra 2025): DKS / Rappy Snappy / OKS editors, macros, light direction and live view DONE (on `main`, unreleased; user reported the first three groups OK on hardware in general terms, lighting extras untested; check lists in TODO "Web-driver parity"). Light point is type-102 only and there is no sleep time in the bundle. Next:
-   - Import of the official config export: find the export / import code in the bundle (search `exportConfig`, `importConfig`, `.json`, `download`, `FileReader`), document the file format, map it onto `Gen2Panel::import_backup` checks (same safety rules: only picker / factory actions, tables validated).
-   - Bundle: `C:\...\Drunk Deer\gen2-bundle\` (request read access, stage the JS into the cloud, beautify with js-beautify 1.15.1 -> line refs match the protocol doc).
-   - Gen-2 live key depth: not available (no travel stream in the official driver); don't re-investigate unless the bundle is re-downloaded.
+2. Web-driver parity, gen-2 (A75 Ultra 2025): the planned list is DONE on `main` (unreleased): DKS / Rappy Snappy / OKS editors, macros, light direction, live view, import of the official profile export. User reported DKS / RS / OKS / macros OK on hardware in general terms; lighting extras and official import untested. Open check lists: TODO "Web-driver parity". Not possible / not applicable: gen-2 live key depth (no travel stream), light point (type 102 only), sleep time (not in the bundle).
+   - Next: collect the hardware checks + a real official export file (add as test fixture), then release 0.13.0 (bump `Cargo.toml`, CHANGELOG heading, user tags `v0.13.0`).
+   - Left from the inventory: advanced keys / macros on FN layers, macro names, other gen-2 models' layouts.
 3. Gen-1 bundle: ask the user to attach "New folder (21).zip" (gen-1 only, = live site, SHA-256 `0aa5b587f453d1b8…`), or read it in the built-in browser (`fetch('/js/index.exKUY8vl.js')` on beta.drunkdeer-antler.com); shells can't reach the site. Gen-2 bundle is only in `…\Drunk Deer\gen2-bundle\`.
 4. UI overhaul remainder: gen-2 Performance two-card layout; restyle Keymap / Advanced / Lighting editors.

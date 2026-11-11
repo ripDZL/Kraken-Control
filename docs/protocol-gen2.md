@@ -83,6 +83,14 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - Official reader quirk: it skips every header entry with offset 64, which is also the offset of the first stored macro (it relies on its browser copy). Kraken reads the block back instead: events at offset 64 go to the lowest id with that offset that a key plays, else to the lowest id with that offset; right after its own write it keeps the list it sent.
 - Kraken: `gen2::{MacroEvent, MacroKey, encode_macros, parse_macros, macro_action, macros_bound}`; `device2` reads the block in the snapshot (a failed read only switches macros off) and `Cmd::SaveMacros` writes header + events, then reads 2048 B back and compares; UI `ui2::macros_card` / `macro_editor` / `macro_record`. Mouse steps (type 3) read from a keyboard are kept as they are; the recorder makes key steps only. No names (official keeps them in the browser).
 
+## Official config export (profile JSON)
+- Export (L17850-17872): `{ name, travelKeys, advancedKeys, userKeys, exportTime }`, saved as `<profile name>.json`. No model id, lighting, settings or macros in it.
+- `travelKeys[128]` (objects from `getKeyTrigger`, L2270-2292): `switch_type`, `key_mode` (whole byte [1]), `priority` ([1] >> 4), `key_actuation` / `rt_press` / `rt_release` (0.01 mm, raw + 1), `pressPrecision`, `releasePrecision`, `press_deadzone` (top), `release_deadzone` (bottom).
+- `userKeys`: object `"0".."3"` -> array of `{ type, code1, code2, ... }` per matrix slot.
+- `advancedKeys[]`: `type` `dks` / `mt` / `tgl` / `rs` / `socd` / `oks`, `layer`, `index1` (slot), `index2` (partner slot); `mt`: `mtClickKey`, `mtDownKey`, `mtTime` ms (default 100); pairs: `key1`, `key2`; `tgl`: `tglKey`; `dks`: `dksPoint[4]`, `dksKeys[4]` = `{ key, downStart, downEnd, upStart, upEnd }` (editor values, continuation values included).
+- Import (L17712-17782 -> `setAllAdvancedKeys`, L12780-12817): writes the four layers, rebuilds the DKS / MT / TGL tables from the list in list order (a pair = two MT entries `[key1, key2]`, `[key2, key1]`), then sets the keymap entries: DKS `144 n 0`, MT `146 n time/10`, pair `kind n index2` and `kind n+1 index1`, TGL `145 n 0`; then travel.
+- Kraken: `backup::parse_official` builds the same tables / entries as a `backup::Gen2` (board = "official driver export"), which then goes through `Gen2Panel::import_backup` unchanged in its checks (only picker / factory actions, travel clamped, switch type and precision kept). Advanced entries in `userKeys` that the list doesn't cover get index 255 and fall back to factory. Macro keys fall back to factory (no macros in the file). Format taken from the code only — no real export file seen yet.
+
 ## Settings block (64 B)
 - `[1]` low nibble system mode (2 = mac) · `[4]` low = polling (1 8k, 2 4k, 3 2k, 4 1k), high = tick (0 off, 1 30, 2 60)
 - `[6]` b0 lock Win, b1 lock Alt+Tab, b2 lock Alt+F4 · `[7]` b0 Adaptive Stable ("berserk"), b1 bottom-RT mode, b3 debug, b5–7 debounce
@@ -101,4 +109,4 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - Never used by Kraken: calibration A8/A9 (input reports 0xA0 = calibration stream), reset EE, boot mode 95[06...], ROM erase/write 81/83, firmware update.
 - Func-byte setters (L2346-2390): func[7] bit0 Berserk mode, bits1 stability (Adaptive Stable), bit3 debug mode key, bits5-7 debounce; func[4] low nibble polling, high nibble tick rate; func[1] system mode.
 - Live depth: none on gen-2 (the Test tab uses browser keydown/keyup, L20835).
-- Gaps vs Kraken (2026-11-11, after DKS / RS / OKS, macros, light direction and live view): import of the official config export; logo / side light blocks `[24..39]` (other models); light point (type 102).
+- Gaps vs Kraken (2026-11-11, after DKS / RS / OKS, macros, light direction, live view and official-export import): logo / side light blocks `[24..39]` (other models); light point (type 102).

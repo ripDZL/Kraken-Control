@@ -2117,6 +2117,9 @@ impl App {
             }
         });
         theme::help(ui, "The export has what the pages show now, including changes not saved to the keyboard yet.");
+        if self.board == Board::Gen2 {
+            theme::help(ui, "Import also takes a profile exported by the official web driver (key travel, keymap and advanced keys).");
+        }
 
         let shown = self.shown_keyboard();
         let Some(p) = self.backup_pending.as_mut() else { return };

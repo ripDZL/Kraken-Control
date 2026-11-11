@@ -128,3 +128,8 @@
 - App: Direction row on Lighting for effects 6 / 7 / 8 / 10 (`LIGHT_DIRECTION` now in `EDITABLE`, `LIGHTING` (last; presets with one field less still apply) and `BACKUP_FIELDS`). Live view card below the controls (`Cmd::ReadLeds` / `Event::Leds`, 300 ms poll, quiet).
 - Verified: Linux demo screenshot (Direction row, Live view with stand-in colours). Tests: dd-proto 48, app 16; clippy clean both configs. Hardware untested.
 
+## 2026-11-11 (web-driver parity, part 5: official config import)
+- Bundle: export / import handlers + `setAllAdvancedKeys` -> `docs/protocol-gen2.md` "Official config export".
+- `backup::parse_official` (pure): travel -> `Gen2Key`, four layers, tables + advanced keymap entries rebuilt from `advancedKeys` in list order, DKS continuation values folded into spans; `OFFICIAL_BOARD` marker skips only the board-name check in `import_backup`; empty colours = keep. Test `official_export_is_converted` (synthetic file built from the field names in the bundle).
+- UI: help line on the back-up card (gen-2). Tests: dd-proto 48, app 17; clippy clean both configs. No real export file seen yet.
+

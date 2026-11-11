@@ -818,7 +818,8 @@ impl Gen2Panel {
     /// to factory. Returns notes about what was changed.
     pub fn import_backup(&mut self, g: &backup::Gen2) -> Result<Vec<String>, String> {
         let Some(s) = self.snap.as_ref() else { return Err("Connect the keyboard first.".into()) };
-        if g.board != s.name {
+        // A file from the official driver doesn't name its keyboard; the layout check below still applies.
+        if g.board != s.name && g.board != backup::OFFICIAL_BOARD {
             return Err(format!("The keyboard settings are for {}, not the {}.", g.board, s.name));
         }
         if g.keys.len() != self.triggers.len() || g.keymap.len() != self.keymap.len() || g.keymap.iter().zip(&self.keymap).any(|(a, b)| a.len() != b.len()) {
@@ -942,7 +943,9 @@ impl Gen2Panel {
         if b > 0 {
             self.last_brightness = b;
         }
-        if g.colors.len() == self.colors.len() {
+        if g.colors.is_empty() {
+            // No key colours in the file (official driver export): keep them.
+        } else if g.colors.len() == self.colors.len() {
             if g.colors != self.colors {
                 let before = std::mem::replace(&mut self.colors, g.colors.clone());
                 self.color_undo.push(before);

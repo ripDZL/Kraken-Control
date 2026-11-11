@@ -58,6 +58,8 @@ product ID.
 - Move to another PC: export every setting (keyboard and app) to one JSON
   file and import it on a fresh install. Imported values are checked before
   anything reaches the keyboard.
+- Import profiles exported by the official 2025 web driver (key travel,
+  keymap, advanced keys).
 - Two themes, Dark Grey (default) and Black-Plumb, both checked for WCAG text
   contrast.
 - Portable mode: put a file named `portable` next to the exe and settings
