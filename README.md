@@ -82,6 +82,7 @@ product ID.
 - Advanced keys: SOCD pairs with priority, Rappy Snappy, One Key Switch,
   Mod Tap, Toggle and DKS (up to four actions at different depths of one
   key press).
+- Macros: record or build key sequences and put them on keys.
 - Polling rate, tick rate, anti-shake, Adaptive Stable, Win / Alt+Tab /
   Alt+F4 locks.
 

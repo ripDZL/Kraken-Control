@@ -26,13 +26,13 @@ Current state and handoff. History is in PROGRESS.md.
 - v0.12.0 Export / Import with real file dialogs, import into a fresh install, then Save to keyboard (both boards).
 - Software renderer checks (DPI, resize, clipboard, minimise), memory vs GPU.
 - Gen-1 Lighting (v0.9) on hardware; gen-2 Toggle add/remove; tray agent end-to-end.
-- Gen-2 DKS / Rappy Snappy / One Key Switch editors (2026-11-11): demo-tested only. Check list in TODO "Web-driver parity".
+- Gen-2 DKS / Rappy Snappy / One Key Switch editors and macros (2026-11-11): demo-tested only. Check list in TODO "Web-driver parity".
 
 ## Next
 1. User tests on hardware: gen-1 live key depth (Performance) and knob (Keymap), then the v0.12.0 zip items still open.
-2. Web-driver parity, gen-2 (A75 Ultra 2025): DKS / Rappy Snappy / OKS editors DONE (70e8627 on `main`, CI green, unreleased, hardware untested). Next in order:
-   - Macros: store layout + bind entry are in `docs/protocol-gen2.md` "Macros". Still to read in the bundle: macro `type` / repeats (search `macroType`, string 17202, L15900-16400), recorder limits, mouse events. Then: `gen2` macro block encode / decode + golden tests, `device2` read (0C) in snapshot + write (0D) with read-back, names in `state.json` (official keeps them in the browser), recorder / editor UI, bind via keymap `112, id, 1`, back-up.
-   - Then light direction, light position, sleep time, live LED preview (DE); then import of the official config export.
+2. Web-driver parity, gen-2 (A75 Ultra 2025): DKS / Rappy Snappy / OKS editors and macros DONE (on `main`, unreleased, hardware untested; check lists in TODO "Web-driver parity"). Next in order:
+   - Lighting extras: light direction (func [11], already a field), light position, sleep time, live LED preview (cmd DE, 384 B, read-only, official polls every 300 ms, L18957). Read the func-byte setters around L2346-2390 and the lighting page for position / sleep fields first.
+   - Then import of the official config export (find the export / import code in the bundle; map onto `Gen2Panel::import_backup` checks).
    - Bundle: `C:\...\Drunk Deer\gen2-bundle\` (request read access, stage the JS into the cloud, beautify with js-beautify 1.15.1 -> line refs match the protocol doc).
 3. Gen-1 bundle: ask the user to attach "New folder (21).zip" (gen-1 only, = live site, SHA-256 `0aa5b587f453d1b8…`), or read it in the built-in browser (`fetch('/js/index.exKUY8vl.js')` on beta.drunkdeer-antler.com); shells can't reach the site. Gen-2 bundle is only in `…\Drunk Deer\gen2-bundle\`.
 4. UI overhaul remainder: gen-2 Performance two-card layout; restyle Keymap / Advanced / Lighting editors.

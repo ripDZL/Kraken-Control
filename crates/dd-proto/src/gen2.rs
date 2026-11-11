@@ -37,6 +37,8 @@ pub mod cmd {
     pub const KEYMAP_READ: u8 = 0x08;
     pub const KEYMAP_WRITE: u8 = 0x09;
     pub const PROFILE_SELECT: u8 = 0x0E;
+    pub const MACRO_READ: u8 = 0x0C;
+    pub const MACRO_WRITE: u8 = 0x0D;
     /// Per-key colours (effect "Custom"), 128 × RGB at 512·profile.
     pub const COLORS_READ: u8 = 0x0A;
     pub const COLORS_WRITE: u8 = 0x0B;
@@ -722,6 +724,122 @@ pub fn free_entries(used: &[bool], n: usize) -> Option<usize> {
     (0..=used.len().saturating_sub(n)).find(|&i| used[i..i + n].iter().all(|u| !u))
 }
 
+// ---------------------------------------------------------------- macros
+//
+// One 2048 B block per profile (official `setMacro` / `getMacro`): 64 B header
+// = 32 x u16 LE offset of a macro's first event, then 4 B events
+// `[delay lo, delay hi, flags, code]`. delay = ms to wait after the event;
+// flags: bits 0-5 type (1 modifier mask, 2 key, 3 mouse), bit 6 press, bit 7
+// last event of the macro. A key plays macro `id` through keymap `112 id 1`.
+
+pub const MACRO_LEN: usize = 2048;
+pub const MACRO_HEADER: usize = 64;
+/// Header entries.
+pub const MACRO_SLOTS: usize = 32;
+/// Macros the official driver offers (M1..M16).
+pub const MACROS: usize = 16;
+/// Events that fit in a block, all macros together.
+pub const MACRO_EVENTS_MAX: usize = (MACRO_LEN - MACRO_HEADER) / 4;
+
+pub fn macro_base(profile: u8) -> u16 {
+    2048 * profile as u16
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MacroKey {
+    /// HID usage; 224..=231 are the modifiers.
+    Key(u8),
+    /// Mouse button as stored (the official reader knows it, its recorder never writes it).
+    Mouse(u8),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MacroEvent {
+    pub key: MacroKey,
+    pub press: bool,
+    /// Wait after this event, ms (written as 0 on a macro's last event).
+    pub delay_ms: u16,
+}
+
+/// Keymap entry that plays macro `id` once (the official bind always writes 1).
+pub fn macro_action(id: u8) -> Action {
+    Action { kind: kind::MACRO, code1: id, code2: 1 }
+}
+
+/// Macro ids referenced by any layer.
+pub fn macros_bound(layers: &[Vec<Action>]) -> Vec<bool> {
+    let mut used = vec![false; MACRO_SLOTS];
+    for a in layers.iter().flatten() {
+        if a.kind == kind::MACRO && (a.code1 as usize) < MACRO_SLOTS {
+            used[a.code1 as usize] = true;
+        }
+    }
+    used
+}
+
+/// Block for `macros` (index = id), as the official driver writes it: header
+/// plus events only. `None` if there are more than 32 macros or the events
+/// don't fit. Empty macros get offset 64 like the first stored one.
+pub fn encode_macros(macros: &[Vec<MacroEvent>]) -> Option<Vec<u8>> {
+    let total: usize = macros.iter().map(Vec::len).sum();
+    if macros.len() > MACRO_SLOTS || total > MACRO_EVENTS_MAX {
+        return None;
+    }
+    let mut out = vec![0u8; MACRO_HEADER];
+    for (id, events) in macros.iter().enumerate() {
+        let offset = if events.is_empty() { MACRO_HEADER } else { out.len() };
+        out[2 * id..2 * id + 2].copy_from_slice(&(offset as u16).to_le_bytes());
+        for (i, e) in events.iter().enumerate() {
+            let last = i + 1 == events.len();
+            let (kind, code) = match e.key {
+                MacroKey::Key(c @ 224..=231) => (1, 1 << (c & 15)),
+                MacroKey::Key(c) => (2, c),
+                MacroKey::Mouse(b) => (3, b),
+            };
+            let delay = if last { 0 } else { e.delay_ms };
+            out.extend_from_slice(&delay.to_le_bytes());
+            out.extend_from_slice(&[kind | (e.press as u8) << 6 | (last as u8) << 7, code]);
+        }
+    }
+    Some(out)
+}
+
+/// The 32 macros of a block. Offset 64 means "empty" as well as "first stored
+/// macro", so the events at 64 go to the lowest such id that is `bound` to a
+/// key, else to the lowest such id.
+pub fn parse_macros(raw: &[u8], bound: &[bool]) -> Vec<Vec<MacroEvent>> {
+    let mut out = vec![Vec::new(); MACRO_SLOTS];
+    if raw.len() < MACRO_HEADER {
+        return out;
+    }
+    let offset = |id: usize| u16::from_le_bytes([raw[2 * id], raw[2 * id + 1]]) as usize;
+    let at_start: Vec<usize> = (0..MACRO_SLOTS).filter(|&id| offset(id) == MACRO_HEADER).collect();
+    let first = at_start.iter().copied().find(|&id| bound.get(id).copied().unwrap_or(false)).or(at_start.first().copied());
+    for (id, events) in out.iter_mut().enumerate() {
+        let mut o = offset(id);
+        if o < MACRO_HEADER || (o == MACRO_HEADER && first != Some(id)) {
+            continue;
+        }
+        while let Some(e) = raw.get(o..o + 4) {
+            let (flags, code) = (e[2], e[3]);
+            if code == 0 {
+                break;
+            }
+            let key = match flags & 0x3F {
+                1 => MacroKey::Key(224 + code.trailing_zeros() as u8),
+                3 => MacroKey::Mouse(code),
+                _ => MacroKey::Key(code),
+            };
+            events.push(MacroEvent { key, press: flags & 0x40 != 0, delay_ms: u16::from_le_bytes([e[0], e[1]]) });
+            if flags & 0x80 != 0 {
+                break;
+            }
+            o += 4;
+        }
+    }
+    out
+}
+
 impl Trigger {
     /// SOCD priority nibble (`[1] >> 4`): 0 last input wins, 1 this key, 2 the other key.
     pub fn priority(&self) -> u8 {
@@ -1189,6 +1307,62 @@ mod tests {
         let used = dks_entries_used(&[layer]);
         assert_eq!(free_entries(&used, 1), Some(0));
         assert!(used[1]);
+    }
+
+    #[test]
+    fn macro_block_golden() {
+        let ev = |code: u8, press: bool, delay_ms: u16| MacroEvent { key: MacroKey::Key(code), press, delay_ms };
+        // M1 empty, M2 = Ctrl+C (LCtrl 224, C 6), M3 = A tap with a 300 ms hold.
+        let m2 = vec![ev(224, true, 50), ev(6, true, 50), ev(6, false, 50), ev(224, false, 77)];
+        let m3 = vec![ev(4, true, 300), ev(4, false, 0)];
+        let raw = encode_macros(&[vec![], m2.clone(), m3.clone()]).unwrap();
+        #[rustfmt::skip]
+        let events = [
+            50, 0, 0x41, 0x01,   // LCtrl down (modifier mask), then 50 ms
+            50, 0, 0x42, 6,      // C down
+            50, 0, 0x02, 6,      // C up
+            0, 0, 0x81, 0x01,    // LCtrl up, last: delay written as 0
+            0x2C, 0x01, 0x42, 4, // A down, 300 ms
+            0, 0, 0x82, 4,       // A up, last
+        ];
+        assert_eq!(raw.len(), 64 + events.len());
+        assert_eq!(raw[..8], [64, 0, 64, 0, 80, 0, 0, 0]);
+        assert!(raw[8..64].iter().all(|b| *b == 0));
+        assert_eq!(raw[64..], events);
+
+        let mut block = raw.clone();
+        block.resize(MACRO_LEN, 0);
+        // M1 and M2 both sit at offset 64: a key bound to M2 settles it.
+        let mut bound = vec![false; MACRO_SLOTS];
+        bound[1] = true;
+        let back = parse_macros(&block, &bound);
+        assert_eq!(back.len(), MACRO_SLOTS);
+        assert!(back[0].is_empty());
+        assert_eq!(back[1], [m2[0], m2[1], m2[2], ev(224, false, 0)]);
+        assert_eq!(back[2], m3);
+        // Nothing bound: the events at 64 go to the lowest id there.
+        let back = parse_macros(&block, &[]);
+        assert_eq!(back[0].len(), 4);
+        assert!(back[1].is_empty());
+        assert_eq!(back[2], m3);
+        // Factory-empty block and the mouse type of the official reader.
+        assert!(parse_macros(&vec![0; MACRO_LEN], &[]).iter().all(Vec::is_empty));
+        let mouse = vec![MacroEvent { key: MacroKey::Mouse(1), press: true, delay_ms: 0 }];
+        let raw = encode_macros(std::slice::from_ref(&mouse)).unwrap();
+        assert_eq!(raw[64..], [0, 0, 0xC3, 1]);
+        assert_eq!(parse_macros(&raw, &[])[0], mouse);
+        // Limits and addresses.
+        assert_eq!(MACRO_EVENTS_MAX, 496);
+        assert!(encode_macros(&[vec![ev(4, true, 1); 496]]).is_some());
+        assert!(encode_macros(&[vec![ev(4, true, 1); 497]]).is_none());
+        assert_eq!(macro_base(3), 6144);
+        // 68 B at 2048 * profile: a full 56 B chunk, then 12 B flagged last.
+        let pk = write_region(cmd::MACRO_WRITE, macro_base(1), &raw);
+        assert_eq!(pk.len(), 2);
+        assert_eq!((pk[0][..3].to_vec(), pk[0][4..8].to_vec()), (vec![GROUP, 0x0D, 0], vec![56, 0x00, 0x08, 0]));
+        assert_eq!(pk[1][4..8], [12, 0x38, 0x08, 1]);
+        assert_eq!(macro_action(5), Action { kind: 112, code1: 5, code2: 1 });
+        assert!(macros_bound(&[vec![macro_action(5)]])[5]);
     }
 
     #[test]

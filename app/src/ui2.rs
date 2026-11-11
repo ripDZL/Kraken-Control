@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
-use dd_proto::gen2::{self, func, Action, Advanced, Dks, LayoutKey, PairKind, RtMode, Trigger};
+use dd_proto::gen2::{self, func, Action, Advanced, Dks, LayoutKey, MacroEvent, MacroKey, PairKind, RtMode, Trigger};
 use dd_proto::pattern;
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
 
@@ -25,7 +25,23 @@ enum Draft {
     Dks { slot: Option<usize>, entry: Option<usize>, dks: Dks },
     ModTap { key: Option<usize>, tap: Action, hold: Action, hold_ms: u16 },
     Toggle { key: Option<usize>, action: Action },
+    /// Waiting for a click on the key that should play macro `id`.
+    MacroBind { id: usize },
 }
+
+/// Macro being recorded / edited (Advanced keys > Macros).
+struct MacroEdit {
+    id: usize,
+    events: Vec<MacroEvent>,
+    recording: bool,
+    /// Record the real pauses between keys (else 50 ms each, the official default).
+    timed: bool,
+    last_event: Option<Instant>,
+    mods: egui::Modifiers,
+}
+
+/// Pause the official recorder puts between events unless real timing is kept.
+const MACRO_DELAY_MS: u16 = 50;
 
 const KNOB_NAMES: [&str; 3] = ["Knob press", "Knob left", "Knob right"];
 /// DKS stages in stroke order (see `gen2::DksBind`).
@@ -52,6 +68,12 @@ pub struct Gen2Panel {
     mt: Vec<u8>,
     tgl: Vec<u8>,
     dks: Vec<u8>,
+    /// Macros by id (32 lists; empty Vec = the keyboard's macro block wasn't readable),
+    /// the keyboard's copy, and what the last Save sent.
+    macros: Vec<Vec<MacroEvent>>,
+    macros_synced: Vec<Vec<MacroEvent>>,
+    macros_sent: Option<Vec<Vec<MacroEvent>>>,
+    macro_edit: Option<MacroEdit>,
     /// Knob press / left / right matrix slots.
     knob: [Option<u8>; 3],
     /// Knob action selected for remapping (index into `knob`).
@@ -164,6 +186,10 @@ impl Gen2Panel {
             mt: Vec::new(),
             tgl: Vec::new(),
             dks: Vec::new(),
+            macros: Vec::new(),
+            macros_synced: Vec::new(),
+            macros_sent: None,
+            macro_edit: None,
             knob: [None; 3],
             knob_sel: None,
             draft: None,
@@ -253,6 +279,13 @@ impl Gen2Panel {
             mt,
             tgl: vec![0; gen2::TGL_LEN],
             dks,
+            macros: {
+                // demo: M1 = Ctrl+C
+                let ev = |code: u8, press: bool| MacroEvent { key: MacroKey::Key(code), press, delay_ms: MACRO_DELAY_MS };
+                let mut m = gen2::encode_macros(&[vec![ev(224, true), ev(6, true), ev(6, false), ev(224, false)]]).unwrap_or_default();
+                m.resize(gen2::MACRO_LEN, 0);
+                m
+            },
         };
         self.connected = Some(snap.name);
         self.apply(snap);
@@ -261,6 +294,10 @@ impl Gen2Panel {
             Some("dks") => Some(Draft::Dks { slot: Some(q), entry: Some(0), dks: demo_dks }),
             Some("rs") => Some(Draft::Pair { kind: PairKind::Rs, keys: [Some(q), Some(e)], priority: 0 }),
             Some("oks") => Some(Draft::Pair { kind: PairKind::Oks, keys: [Some(q), None], priority: 0 }),
+            Some("macro") => {
+                self.macro_edit = Some(MacroEdit { id: 0, events: self.macros[0].clone(), recording: false, timed: false, last_event: None, mods: egui::Modifiers::NONE });
+                None
+            }
             _ => None,
         };
         self.selected = [30usize, 44, 45, 46].into_iter().collect();
@@ -288,6 +325,10 @@ impl Gen2Panel {
         self.mt = s.mt.clone();
         self.tgl = s.tgl.clone();
         self.dks = s.dks.clone();
+        self.macros_synced = if s.macros.len() == gen2::MACRO_LEN { gen2::parse_macros(&s.macros, &gen2::macros_bound(&s.keymap)) } else { Vec::new() };
+        self.macros = self.macros_synced.clone();
+        self.macros_sent = None;
+        self.macro_edit = None;
         self.knob = gen2::knob_slots(&s.factory[0]);
         self.draft = None;
         self.painting = None;
@@ -359,6 +400,21 @@ impl Gen2Panel {
                         *s = data;
                     }
                 }
+                Event::Macros(back) => {
+                    // What was sent is known exactly; a re-parse can't tell an empty
+                    // macro from the first stored one (both have offset 64).
+                    let sent = self.macros_sent.take().filter(|m| gen2::encode_macros(m).is_some_and(|d| back.get(..d.len()) == Some(&d[..])));
+                    match sent {
+                        Some(m) => self.macros_synced = m,
+                        None => {
+                            self.macros_synced = gen2::parse_macros(&back, &gen2::macros_bound(&self.keymap));
+                            self.macros = self.macros_synced.clone();
+                        }
+                    }
+                    if let Some(s) = self.snap.as_mut() {
+                        s.macros = back;
+                    }
+                }
                 Event::Busy(b) => self.busy = b,
                 Event::Done(m) => self.set_status(m, false),
                 Event::Error(m) => self.set_status(m, true),
@@ -400,8 +456,13 @@ impl Gen2Panel {
         v
     }
 
+    fn macros_dirty(&self) -> bool {
+        self.macros != self.macros_synced
+    }
+
     fn dirty(&self) -> bool {
-        self.triggers_dirty()
+        self.macros_dirty()
+            || self.triggers_dirty()
             || !self.func_edits().is_empty()
             || !self.keymap_dirty_layers().is_empty()
             || self.colors_dirty()
@@ -425,6 +486,12 @@ impl Gen2Panel {
                 Table::Dks => self.dks.clone(),
             };
             self.dev.send(Cmd::SaveTable { profile, table, data });
+        }
+        if self.macros_dirty() {
+            if let Some(data) = gen2::encode_macros(&self.macros) {
+                self.macros_sent = Some(self.macros.clone());
+                self.dev.send(Cmd::SaveMacros { profile, data });
+            }
         }
         for layer in self.keymap_dirty_layers() {
             self.dev.send(Cmd::SaveKeymap { profile, layer, actions: self.keymap[layer].clone() });
@@ -547,7 +614,7 @@ impl Gen2Panel {
         match page {
             Tab::Performance => self.triggers_dirty(),
             Tab::Keymap => !self.keymap_dirty_layers().is_empty(),
-            Tab::Advanced => !self.tables_dirty().is_empty(),
+            Tab::Advanced => !self.tables_dirty().is_empty() || self.macros_dirty(),
             Tab::Settings => !self.func_edits().is_empty(),
             _ => false,
         }
@@ -557,7 +624,7 @@ impl Gen2Panel {
         match self.tab {
             Tab::Performance => "Choose how far each key travels before it registers, how quickly it resets, and its dead zones.",
             Tab::Keymap => "Change what each key and the knob send. Click a key, then pick its new action.",
-            Tab::Advanced => "Give keys extra jobs: SOCD, Rappy Snappy and One Key Switch pairs, Mod Tap, Toggle and DKS.",
+            Tab::Advanced => "Give keys extra jobs: SOCD, Rappy Snappy and One Key Switch pairs, Mod Tap, Toggle, DKS and macros.",
             Tab::Lighting => "Changes show on the keyboard straight away. No need to save.",
             Tab::Profiles => "Switch between the four profiles stored on the keyboard.",
             Tab::Settings => "Keyboard options, the look of the app and troubleshooting.",
@@ -598,7 +665,10 @@ impl Gen2Panel {
         match self.tab {
             Tab::Performance => theme::card(ui, |ui| self.performance(ui)),
             Tab::Keymap => theme::card(ui, |ui| self.keymap_editor(ui)),
-            Tab::Advanced => theme::card(ui, |ui| self.advanced(ui)),
+            Tab::Advanced => {
+                theme::card(ui, |ui| self.advanced(ui));
+                theme::card(ui, |ui| self.macros_card(ui));
+            }
             Tab::Lighting => theme::card(ui, |ui| self.lighting(ui)),
             Tab::Profiles => theme::card(ui, |ui| self.profiles(ui)),
             Tab::Settings => theme::card(ui, |ui| {
@@ -676,6 +746,7 @@ impl Gen2Panel {
             mt: self.mt.clone(),
             tgl: self.tgl.clone(),
             dks: self.dks.clone(),
+            macros: gen2::encode_macros(&self.macros).unwrap_or_default(),
         })
     }
 
@@ -728,6 +799,13 @@ impl Gen2Panel {
         let tgl_ok = g.tgl.len() == gen2::TGL_LEN;
         // Back-ups from before v0.13 carry no DKS table: those keys stay as they are.
         let dks_ok = g.dks.len() == gen2::DKS_LEN;
+        // Macros: only when the file has them and this keyboard's macro block is readable.
+        let macros_in = (g.macros.len() >= gen2::MACRO_HEADER && g.macros.len() <= gen2::MACRO_LEN && !self.macros.is_empty()).then(|| {
+            let layers: Vec<Vec<Action>> = g.keymap.iter().map(|l| l.iter().map(|v| Action { kind: v[0], code1: v[1], code2: v[2] }).collect()).collect();
+            let mut block = g.macros.clone();
+            block.resize(gen2::MACRO_LEN, 0);
+            gen2::parse_macros(&block, &gen2::macros_bound(&layers))
+        });
         let (mut reset, mut dks) = (0, 0);
         for (l, layer) in g.keymap.iter().enumerate() {
             for (i, v) in layer.iter().enumerate() {
@@ -752,6 +830,7 @@ impl Gen2Panel {
                         }
                     }
                     gen2::kind::TGL => tgl_ok && 3 * e + 3 <= g.tgl.len() && safe(&gen2::tgl_entry(&g.tgl, e)),
+                    gen2::kind::MACRO => a.code2 == 1 && macros_in.as_ref().is_some_and(|m| m.get(e).is_some_and(|v| !v.is_empty())),
                     _ => safe(&a),
                 };
                 self.keymap[l][i] = if ok {
@@ -770,6 +849,10 @@ impl Gen2Panel {
         }
         if dks_ok {
             self.dks = g.dks.clone();
+        }
+        if let Some(m) = macros_in {
+            self.macros = m;
+            self.macro_edit = None;
         }
         if reset > 0 {
             notes.push(format!("{} not offered by Kraken, set back to factory", plural(reset, "key action", "key actions")));
@@ -857,6 +940,7 @@ impl Gen2Panel {
             gen2::kind::RS => Some("RS"),
             gen2::kind::SOCD => Some("SOCD"),
             gen2::kind::OKS => Some("OKS"),
+            gen2::kind::MACRO => Some("MACRO"),
             _ => None,
         }
     }
@@ -1223,7 +1307,7 @@ impl Gen2Panel {
             Some(Draft::Pair { keys, .. }) => keys.iter().flatten().copied().collect(),
             Some(Draft::Dks { slot, .. }) => slot.and_then(|s| self.slots.iter().position(|x| *x == Some(s as u8))).into_iter().collect(),
             Some(Draft::ModTap { key, .. }) | Some(Draft::Toggle { key, .. }) => key.into_iter().collect(),
-            None => Vec::new(),
+            Some(Draft::MacroBind { .. }) | None => Vec::new(),
         }
     }
 
@@ -1234,6 +1318,12 @@ impl Gen2Panel {
         }
         if self.draft.is_some() && self.advanced_tag(slot).is_some() {
             self.set_status(format!("{} is already an advanced key — remove it first", self.layout[i].name), true);
+            return;
+        }
+        if let Some(Draft::MacroBind { id }) = self.draft {
+            self.keymap[0][slot] = gen2::macro_action(id as u8);
+            self.draft = None;
+            self.set_status(format!("{} plays M{} — Save to keyboard to apply", self.layout[i].name, id + 1), false);
             return;
         }
         let base = self.base_action(slot);
@@ -1258,7 +1348,7 @@ impl Gen2Panel {
                 *key = Some(i);
                 *action = base;
             }
-            None => {}
+            Some(Draft::MacroBind { .. }) | None => {}
         }
     }
 
@@ -1411,6 +1501,10 @@ impl Gen2Panel {
                 action_combo(ui, "tgl_action", "Toggles", action);
                 ui.add_enabled(key.is_some(), egui::Button::new("Create")).clicked()
             }
+            Draft::MacroBind { id } => {
+                ui.label(format!("Click the key that should play M{}.", *id + 1));
+                false
+            }
         };
         if ui.button("Cancel").clicked() {
             cancel = true;
@@ -1471,6 +1565,7 @@ impl Gen2Panel {
                 self.keymap[0][s] = Action { kind: gen2::kind::MT, code1: k as u8, code2: (hold_ms / 10).min(255) as u8 };
                 Ok("Mod Tap added".into())
             }
+            Draft::MacroBind { .. } => Err("click a key".into()),
             Draft::Toggle { key, action } => {
                 let s = slot(key)?;
                 let k = gen2::free_entries(&gen2::tgl_entries_used(&self.keymap), 1).ok_or("toggle table is full")?;
@@ -1509,6 +1604,100 @@ impl Gen2Panel {
             self.draft = None;
         }
         self.set_status("Advanced key removed — Save to keyboard to apply", false);
+    }
+
+    /// Puts every key that plays macro `id` back to its factory action (all layers).
+    fn macro_unbind(&mut self, id: usize) {
+        let Some(snap) = &self.snap else { return };
+        for (layer, keys) in self.keymap.iter_mut().enumerate() {
+            for (slot, a) in keys.iter_mut().enumerate() {
+                if a.kind == gen2::kind::MACRO && a.code1 as usize == id {
+                    *a = snap.factory.get(layer).and_then(|l| l.get(slot)).copied().unwrap_or_default();
+                }
+            }
+        }
+    }
+
+    /// Macros: list, recorder / editor, and putting a macro on a key.
+    fn macros_card(&mut self, ui: &mut egui::Ui) {
+        theme::section(ui, "Macros");
+        if self.macros.is_empty() {
+            theme::help(ui, "This keyboard didn't answer when asked for its macros, so they are switched off here.");
+            return;
+        }
+        let total: usize = self.macros.iter().map(Vec::len).sum();
+        let (mut edit, mut bind, mut unbind, mut delete) = (None, None, None, None);
+        egui::Grid::new("macros").num_columns(6).spacing([14.0, 6.0]).striped(true).show(ui, |ui| {
+            for (id, events) in self.macros.iter().enumerate().filter(|(_, e)| !e.is_empty()) {
+                let keys: Vec<String> = self
+                    .keymap
+                    .iter()
+                    .flat_map(|l| l.iter().enumerate())
+                    .filter(|(_, a)| a.kind == gen2::kind::MACRO && a.code1 as usize == id)
+                    .map(|(slot, _)| self.slot_name(slot as u8))
+                    .collect();
+                ui.strong(format!("M{}", id + 1));
+                ui.label(macro_summary(events));
+                ui.label(if keys.is_empty() { "not on a key".to_string() } else { format!("on {}", keys.join(", ")) });
+                if ui.small_button("Edit").clicked() {
+                    edit = Some(id);
+                }
+                if ui.small_button("Put on a key").clicked() {
+                    bind = Some(id);
+                }
+                if !keys.is_empty() && ui.small_button("Take off keys").clicked() {
+                    unbind = Some(id);
+                }
+                if ui.small_button("Delete").clicked() {
+                    delete = Some(id);
+                }
+                ui.end_row();
+            }
+        });
+        if total == 0 {
+            ui.label("No macros yet.");
+        }
+        let free_id = (0..gen2::MACROS).find(|&id| self.macros[id].is_empty());
+        if ui.add_enabled(free_id.is_some() && self.macro_edit.is_none(), egui::Button::new("New macro")).clicked() {
+            edit = free_id;
+        }
+        if let Some(id) = edit {
+            self.macro_edit = Some(MacroEdit { id, events: self.macros[id].clone(), recording: false, timed: false, last_event: None, mods: egui::Modifiers::NONE });
+        }
+        if let Some(id) = bind {
+            self.draft = Some(Draft::MacroBind { id });
+            self.set_status(format!("Click the key that should play M{}", id + 1), false);
+        }
+        if let Some(id) = unbind.or(delete) {
+            self.macro_unbind(id);
+        }
+        if let Some(id) = delete {
+            self.macros[id].clear();
+            if self.macro_edit.as_ref().is_some_and(|e| e.id == id) {
+                self.macro_edit = None;
+            }
+            self.set_status(format!("M{} deleted — Save to keyboard to apply", id + 1), false);
+        }
+
+        let Some(mut e) = self.macro_edit.take() else {
+            theme::help(ui, "A macro is a list of key presses the keyboard plays back when you press the key it is on. Macros belong to the profile.");
+            return;
+        };
+        ui.add_space(6.0);
+        ui.separator();
+        // Room for this macro: the block holds 496 events for all macros together.
+        let room = gen2::MACRO_EVENTS_MAX - (total - self.macros[e.id].len());
+        match macro_editor(ui, &mut e, room) {
+            Some(true) => {
+                if let Some(last) = e.events.last_mut() {
+                    last.delay_ms = 0;
+                }
+                self.macros[e.id] = e.events;
+                self.set_status(format!("M{} updated — Save to keyboard to apply", e.id + 1), false);
+            }
+            Some(false) => {}
+            None => self.macro_edit = Some(e),
+        }
     }
 
     /// Lighting tab; any change to the effect fields is written live.
@@ -1760,6 +1949,204 @@ fn action_pick(ui: &mut egui::Ui, id: impl std::hash::Hash, action: &mut Action)
             }
         }
     });
+}
+
+fn macro_key_label(k: MacroKey) -> String {
+    let a = match k {
+        MacroKey::Key(c @ 224..=231) => Action { kind: gen2::kind::KEY, code1: 1 << (c - 224), code2: 0 },
+        MacroKey::Key(c) => Action { kind: gen2::kind::KEY, code1: 0, code2: c },
+        MacroKey::Mouse(b) => return format!("Mouse {b}"),
+    };
+    match gen2::label(&a) {
+        t if t.is_empty() => format!("key {}", a.code2),
+        t => t,
+    }
+}
+
+/// Keys a macro step can use: the picker's plain keys and modifiers, as HID codes.
+fn macro_keys() -> Vec<(&'static str, Vec<(String, u8)>)> {
+    gen2::picker()
+        .iter()
+        .map(|(cat, items)| {
+            let keys: Vec<(String, u8)> = items
+                .iter()
+                .filter_map(|i| match i.action {
+                    Action { kind: gen2::kind::KEY, code1: 0, code2 } if code2 != 0 => Some((i.label.clone(), code2)),
+                    Action { kind: gen2::kind::KEY, code1, code2: 0 } if code1.is_power_of_two() => Some((i.label.clone(), 224 + code1.trailing_zeros() as u8)),
+                    _ => None,
+                })
+                .collect();
+            (*cat, keys)
+        })
+        .filter(|(_, keys)| !keys.is_empty())
+        .collect()
+}
+
+/// `6 steps: LCtrl C` — the keys pressed, in order.
+fn macro_summary(events: &[MacroEvent]) -> String {
+    let pressed: Vec<String> = events.iter().filter(|e| e.press).map(|e| macro_key_label(e.key)).collect();
+    let shown = pressed.iter().take(10).cloned().collect::<Vec<_>>().join(" ");
+    format!("{} steps: {shown}{}", events.len(), if pressed.len() > 10 { " …" } else { "" })
+}
+
+/// HID usage of a key egui reports (letters, digits, F1–F12 by name; the rest listed).
+fn hid_of(key: egui::Key) -> Option<u8> {
+    use egui::Key::*;
+    Some(match key {
+        Enter => 40,
+        Escape => 41,
+        Backspace => 42,
+        Tab => 43,
+        Space => 44,
+        Minus => 45,
+        Equals => 46,
+        OpenBracket => 47,
+        CloseBracket => 48,
+        Backslash => 49,
+        Semicolon => 51,
+        Quote => 52,
+        Backtick => 53,
+        Comma => 54,
+        Period => 55,
+        Slash => 56,
+        Insert => 73,
+        Home => 74,
+        PageUp => 75,
+        Delete => 76,
+        End => 77,
+        PageDown => 78,
+        ArrowRight => 79,
+        ArrowLeft => 80,
+        ArrowDown => 81,
+        ArrowUp => 82,
+        k => match k.name().as_bytes() {
+            [c @ b'A'..=b'Z'] => 4 + (c - b'A'),
+            [b'0'] => 39,
+            [c @ b'1'..=b'9'] => 30 + (c - b'1'),
+            [b'F', d @ b'1'..=b'9'] => 58 + (d - b'1'),
+            [b'F', b'1', d @ b'0'..=b'2'] => 67 + (d - b'0'),
+            _ => return None,
+        },
+    })
+}
+
+/// Recorder: turns this frame's key events into macro steps. Ctrl / Shift / Alt
+/// are taken from the modifier state (egui has no key events for them) as the left keys.
+fn macro_record(ui: &egui::Ui, e: &mut MacroEdit, room: usize) {
+    // Keep Space / Enter from pressing a focused button while recording.
+    ui.memory_mut(|m| {
+        if let Some(id) = m.focused() {
+            m.surrender_focus(id);
+        }
+    });
+    let (events, mods) = ui.input(|i| (i.events.clone(), i.modifiers));
+    let mod_keys = [(mods.ctrl, e.mods.ctrl, 224u8), (mods.shift, e.mods.shift, 225), (mods.alt, e.mods.alt, 226)];
+    let mut new: Vec<(u8, bool)> = mod_keys.iter().filter(|(now, was, _)| *now && !*was).map(|(_, _, c)| (*c, true)).collect();
+    for ev in &events {
+        if let egui::Event::Key { key, pressed, repeat: false, .. } = ev {
+            if let Some(code) = hid_of(*key) {
+                new.push((code, *pressed));
+            }
+        }
+    }
+    new.extend(mod_keys.iter().filter(|(now, was, _)| !*now && *was).map(|(_, _, c)| (*c, false)));
+    e.mods = mods;
+    for (code, press) in new {
+        if e.events.len() >= room {
+            e.recording = false;
+            break;
+        }
+        let now = Instant::now();
+        if let Some(prev) = e.events.last_mut() {
+            let ms = e.last_event.map_or(u128::from(MACRO_DELAY_MS), |t| now.duration_since(t).as_millis());
+            prev.delay_ms = if e.timed { ms.clamp(1, u128::from(u16::MAX)) as u16 } else { MACRO_DELAY_MS };
+        }
+        e.last_event = Some(now);
+        e.events.push(MacroEvent { key: MacroKey::Key(code), press, delay_ms: 0 });
+    }
+}
+
+/// Macro editor. Returns `Some(true)` on Apply, `Some(false)` on Cancel.
+fn macro_editor(ui: &mut egui::Ui, e: &mut MacroEdit, room: usize) -> Option<bool> {
+    ui.label(format!("Macro M{}", e.id + 1));
+    ui.horizontal(|ui| {
+        if ui.button(if e.recording { "Stop recording" } else { "Record" }).clicked() {
+            e.recording = !e.recording;
+            e.last_event = None;
+            e.mods = ui.input(|i| i.modifiers);
+        }
+        ui.checkbox(&mut e.timed, "Keep my timing");
+        ui.add_enabled_ui(!e.recording, |ui| {
+            if ui.add_enabled(e.events.len() + 2 <= room, egui::Button::new("Add key")).clicked() {
+                if let Some(last) = e.events.last_mut() {
+                    last.delay_ms = last.delay_ms.max(MACRO_DELAY_MS);
+                }
+                e.events.push(MacroEvent { key: MacroKey::Key(4), press: true, delay_ms: MACRO_DELAY_MS });
+                e.events.push(MacroEvent { key: MacroKey::Key(4), press: false, delay_ms: 0 });
+            }
+            if ui.button("Clear").clicked() {
+                e.events.clear();
+            }
+        });
+    });
+    if e.recording {
+        macro_record(ui, e, room);
+        theme::note(ui, "Recording — type the keys now. Win and the right-hand Ctrl / Shift / Alt can't be told apart here; change them in the list afterwards.");
+    } else {
+        theme::help(ui, "Record your typing, or build the list by hand. Without Keep my timing every step waits 50 ms.");
+    }
+    let mut remove = None;
+    let count = e.events.len();
+    egui::Grid::new("macro_steps").num_columns(5).spacing([10.0, 4.0]).show(ui, |ui| {
+        for (i, ev) in e.events.iter_mut().enumerate() {
+            ui.label(theme::hint(&format!("{}", i + 1)));
+            egui::ComboBox::from_id_salt(("macro_dir", i)).width(84.0).selected_text(if ev.press { "Press" } else { "Release" }).show_ui(ui, |ui| {
+                ui.selectable_value(&mut ev.press, true, "Press");
+                ui.selectable_value(&mut ev.press, false, "Release");
+            });
+            egui::ComboBox::from_id_salt(("macro_key", i)).width(120.0).height(320.0).selected_text(macro_key_label(ev.key)).show_ui(ui, |ui| {
+                for (cat, keys) in macro_keys() {
+                    ui.label(egui::RichText::new(cat).color(pal().muted));
+                    for (label, code) in keys {
+                        ui.selectable_value(&mut ev.key, MacroKey::Key(code), label);
+                    }
+                }
+            });
+            if i + 1 < count {
+                ui.add(egui::DragValue::new(&mut ev.delay_ms).range(0..=u16::MAX).speed(1.0).suffix(" ms"));
+            } else {
+                ui.label(theme::hint("end"));
+            }
+            if ui.small_button("Remove").clicked() {
+                remove = Some(i);
+            }
+            ui.end_row();
+        }
+    });
+    if let Some(i) = remove {
+        e.events.remove(i);
+    }
+    // Every press needs its release, or the key stays down after the macro.
+    let mut down = std::collections::BTreeMap::new();
+    for ev in &e.events {
+        *down.entry(macro_key_label(ev.key)).or_insert(0i32) += if ev.press { 1 } else { -1 };
+    }
+    let stuck: Vec<&str> = down.iter().filter(|(_, n)| **n != 0).map(|(k, _)| k.as_str()).collect();
+    if !stuck.is_empty() {
+        theme::note(ui, format!("Press and Release don't pair up for: {}", stuck.join(", ")));
+    }
+    ui.label(theme::hint(&format!("{} steps (room for {room})", e.events.len())));
+    let mut out = None;
+    ui.horizontal(|ui| {
+        let ok = !e.recording && !e.events.is_empty() && e.events.len() <= room && stuck.is_empty();
+        if ui.add_enabled(ok, egui::Button::new("Apply")).clicked() {
+            out = Some(true);
+        }
+        if ui.button("Cancel").clicked() {
+            out = Some(false);
+        }
+    });
+    out
 }
 
 /// What a span of `len` stages starting at `stage` does, e.g. "Press to Release".

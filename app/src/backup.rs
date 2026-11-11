@@ -43,7 +43,7 @@ pub struct File {
 #[serde(tag = "family", rename_all = "snake_case")]
 pub enum Keyboard {
     Gen1(Box<Gen1>),
-    Gen2(Gen2),
+    Gen2(Box<Gen2>),
 }
 
 impl Keyboard {
@@ -84,6 +84,9 @@ pub struct Gen2 {
     /// DKS table; missing in files written before v0.13.
     #[serde(default)]
     pub dks: Vec<u8>,
+    /// Macro block (`gen2::encode_macros`); missing in older files.
+    #[serde(default)]
+    pub macros: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]

@@ -2194,7 +2194,7 @@ impl App {
 
     fn export_to(&mut self, path: &std::path::Path) {
         let keyboard = match self.board {
-            Board::Gen2 => self.gen2.export_backup().map(backup::Keyboard::Gen2),
+            Board::Gen2 => self.gen2.export_backup().map(|g| backup::Keyboard::Gen2(Box::new(g))),
             Board::Gen1 if self.connected_model().is_some() || self.demo => Some(backup::Keyboard::Gen1(Box::new(backup::Gen1 {
                 model: self.model,
                 settings: self.working_profile(String::new()),

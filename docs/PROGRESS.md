@@ -112,3 +112,12 @@
 - Demo: Q = DKS; `--g2draft=dks|rs|oks` opens an editor for screenshots. `docs/screenshots/advanced-gen2.png` retaken.
 - Verified (Linux demo, XTest clicks): Edit -> Press "Hold to Top" -> Apply -> list shows "Q (Press to Top)", page marked unsaved. Tests: dd-proto 46, app 16; clippy clean; check-win OK. Hardware untested.
 - Kept from SOCD: RS does not change the two keys' travel (official writes actuation 1.50, press / release 0.10 mm); entries are freed in place, not renumbered.
+
+## 2026-11-11 (web-driver parity, part 3: gen-2 macros)
+- Bundle facts completed (repeat count is always 1, recorder = key events only, 16 macros, 496 steps per profile, reader quirk at offset 64) -> `docs/protocol-gen2.md` "Macros".
+- `dd-proto::gen2`: `MacroEvent` / `MacroKey`, `encode_macros` (official byte layout), `parse_macros(raw, bound)`, `macro_action`, `macros_bound`, `macro_base`, `cmd::MACRO_READ/WRITE`. Golden test `macro_block_golden`.
+- App: snapshot reads the macro block (read failure -> macros off, rest works); `Cmd::SaveMacros` + `Event::Macros`; Advanced page second card "Macros": list (steps, keys it is on, Edit / Put on a key / Take off keys / Delete), New macro (lowest free id of 16), editor (Record / Stop, Keep my timing, Add key, per-step Press / Release + key + pause, unpaired press warning blocks Apply). Recorder reads egui key events + modifier state (Ctrl / Shift / Alt as left keys; Win not seen).
+- Back-up: `Gen2.macros` (serde default); import takes macro keys only when the file's macro is not empty.
+- Demo: M1 = Ctrl+C; `--g2draft=macro` opens the editor. Verified on Linux (XTest): Clear, Record, typed Shift+H... -> steps listed in order. Needs keyboard focus on the window (set by hand under Xvfb).
+- Tests: dd-proto 47, app 16; clippy clean both configs. Hardware untested.
+

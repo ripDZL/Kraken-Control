@@ -73,12 +73,15 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - Save needs at least one action (L21953, message 20105); new key = four empty actions, points 10 / 30 / 30 / 10 (L22155-22161). Keymap entry `144 k 0`; no trigger write.
 - Impl: `gen2::{Dks, DksBind, dks_stage_bits, dks_spans, dks_entry, set_dks_entry}`; `device2::Table::Dks`; editor `ui2::dks_editor`.
 
-## Macros (0C / 0D) — facts read so far, not implemented
+## Macros (0C / 0D)
 - Store: one 2048 B block per profile at 2048·profile (official `setMacro(list, profileIndex)` L15975 / L19089, `getMacro(profile)` L12476; device calls L571-591). Written from offset 0 in 56 B chunks, last chunk flagged.
 - Layout (L2903-2952): header 64 B = 32 × u16 LE offset of each macro's first event (from block start); empty macro = offset 64 (reader also accepts 0). Events follow from offset 64, 4 B each: `[delay lo, delay hi, flags, code]`.
 - Event: delay (ms) = wait before the NEXT event (0 on the last; official defaults a missing delay to 2); flags bits 0–5 type (1 modifier, 2 key; reader L2954-2988 also knows 3 = mouse), bit 6 = press (0 = release), bit 7 = last event of the macro; code = HID code, modifiers 224–231 as mask `1 << (code & 15)`. Reader stops at code 0.
 - Bind: keymap entry `112, macro id, 1` (L19096-19100; id = index in the header). Binding needs a macro with at least one event (message 20103). Macro names live in the browser (`localStorage["macro_profile_new" + deviceName]`, L14139), not on the keyboard.
-- Not read yet: macro `type` / "Number of repeats" (17202), recorder limits (events per macro, total = (2048 − 64) / 4 = 496 at most), how mouse events are written (writer only emits types 1 / 2).
+- Repeats: the save handler takes the macro's `type` from an input `#macro-repeat-count` that the page never renders (L15966-15975), so it is always 1; bind writes `code2 = 1`. Kraken writes 1.
+- Recorder (L15920-15932, L12025-12047): keydown / keyup only (no mouse listeners), key repeats ignored; each step's delay = ms since the previous event when real timing is on, else 50; the first step gets 50. 16 macros M1..M16 (L3004 ff.); no per-macro step limit in the code, so the block size is the limit: (2048 − 64) / 4 = 496 steps for all macros of a profile.
+- Official reader quirk: it skips every header entry with offset 64, which is also the offset of the first stored macro (it relies on its browser copy). Kraken reads the block back instead: events at offset 64 go to the lowest id with that offset that a key plays, else to the lowest id with that offset; right after its own write it keeps the list it sent.
+- Kraken: `gen2::{MacroEvent, MacroKey, encode_macros, parse_macros, macro_action, macros_bound}`; `device2` reads the block in the snapshot (a failed read only switches macros off) and `Cmd::SaveMacros` writes header + events, then reads 2048 B back and compares; UI `ui2::macros_card` / `macro_editor` / `macro_record`. Mouse steps (type 3) read from a keyboard are kept as they are; the recorder makes key steps only. No names (official keeps them in the browser).
 
 ## Settings block (64 B)
 - `[1]` low nibble system mode (2 = mac) · `[4]` low = polling (1 8k, 2 4k, 3 2k, 4 1k), high = tick (0 off, 1 30, 2 60)
@@ -94,4 +97,4 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - Never used by Kraken: calibration A8/A9 (input reports 0xA0 = calibration stream), reset EE, boot mode 95[06...], ROM erase/write 81/83, firmware update.
 - Func-byte setters (L2346-2390): func[7] bit0 Berserk mode, bits1 stability (Adaptive Stable), bit3 debug mode key, bits5-7 debounce; func[4] low nibble polling, high nibble tick rate; func[1] system mode.
 - Live depth: none on gen-2 (the Test tab uses browser keydown/keyup, L20835).
-- Gaps vs Kraken (2026-11-11; DKS / Rappy Snappy / OKS editors done the same day): macros (record + bind), light direction, light position, sleep time, live LED preview (DE), import of the official config export.
+- Gaps vs Kraken (2026-11-11; DKS / Rappy Snappy / OKS editors and macros done the same day): light direction, light position, sleep time, live LED preview (DE), import of the official config export.

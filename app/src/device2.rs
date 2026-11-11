@@ -30,6 +30,8 @@ pub struct Snapshot {
     pub mt: Vec<u8>,
     pub tgl: Vec<u8>,
     pub dks: Vec<u8>,
+    /// Raw macro block (`gen2::parse_macros`); empty if the keyboard didn't answer the read.
+    pub macros: Vec<u8>,
 }
 
 /// Writable advanced-key tables.
@@ -63,6 +65,8 @@ pub enum Cmd {
     SaveColors { profile: u8, colors: Vec<[u8; 3]> },
     /// Writes a whole advanced-key table, then verifies it.
     SaveTable { profile: u8, table: Table, data: Vec<u8> },
+    /// Writes the macro block (header + events, `gen2::encode_macros`), then verifies it.
+    SaveMacros { profile: u8, data: Vec<u8> },
 }
 
 pub enum Event {
@@ -75,6 +79,8 @@ pub enum Event {
     Keymap { layer: usize, actions: Vec<Action> },
     Colors(Vec<[u8; 3]>),
     Table { table: Table, data: Vec<u8> },
+    /// The macro block as read back after a write.
+    Macros(Vec<u8>),
     Busy(bool),
     Done(String),
     Error(String),
@@ -221,7 +227,18 @@ impl Session {
         let mt = self.read_region(cmd::MT_READ, gen2::mt_base(profile), gen2::MT_LEN)?;
         let tgl = self.read_region(cmd::TGL_READ, gen2::tgl_base(profile), gen2::TGL_LEN)?;
         let dks = self.read_region(cmd::DKS_READ, gen2::dks_base(profile), gen2::DKS_LEN)?;
-        Ok(Snapshot { name: self.name, fw, profile, func, triggers, factory, keymap, colors, mt, tgl, dks })
+        // The official driver reads the macro block on connect too; a keyboard that
+        // doesn't answer it still gets everything else.
+        let macros = match self.read_region(cmd::MACRO_READ, gen2::macro_base(profile), gen2::MACRO_LEN) {
+            Ok(m) => m,
+            Err(e) if is_disconnect(&e) => return Err(e),
+            Err(e) => {
+                log::line(format!("gen2: macro block not readable ({e}); macros are off"));
+                let _ = self.drain();
+                Vec::new()
+            }
+        };
+        Ok(Snapshot { name: self.name, fw, profile, func, triggers, factory, keymap, colors, mt, tgl, dks, macros })
     }
 
     fn keymap(&mut self, profile: u8, layer: usize) -> io::Result<Vec<Action>> {
@@ -463,6 +480,21 @@ impl Worker {
                     Ok(format!("Saved {table:?} table (verified by read-back)"))
                 } else {
                     Err(io::Error::new(io::ErrorKind::InvalidData, format!("{table:?} table read back differently")))
+                }
+            }
+            Cmd::SaveMacros { profile, data } => {
+                if data.len() < gen2::MACRO_HEADER || data.len() > gen2::MACRO_LEN {
+                    return Err(io::Error::new(io::ErrorKind::InvalidInput, "bad macro block"));
+                }
+                let base = gen2::macro_base(profile);
+                s.write_region(cmd::MACRO_WRITE, base, &data)?;
+                let back = s.read_region(cmd::MACRO_READ, base, gen2::MACRO_LEN)?;
+                let same = back[..data.len()] == data[..];
+                self.emit(Event::Macros(back));
+                if same {
+                    Ok("Saved macros (verified by read-back)".into())
+                } else {
+                    Err(io::Error::new(io::ErrorKind::InvalidData, "Macros read back differently"))
                 }
             }
             Cmd::SelectProfile(i) => {
