@@ -1,6 +1,6 @@
 # Official driver RE — A75 Master / Ultra (beta.drunkdeer-antler.com)
 
-Source: `index.exKUY8vl.js` saved 2026-11-07 (bundle kept out of git under `tools/captures/antler-beta/`).
+Source: `index.exKUY8vl.js` saved 2026-11-07 (bundle kept out of git under `tools/captures/antler-beta/`, now empty). Copies: user's "New folder (21).zip" (two identical saves of the page) and the live site; all SHA-256 `0aa5b587f453d1b8…`, 6 223 829 bytes (checked 2026-11-11).
 Prettified with prettier 3.3.3 (`--parser babel --print-width 140`) -> ~58.7k lines. Line refs below = prettified file.
 Data extracted: `docs/data/a75master-keymap.json`, `a75ultra-keymap.json`, `a75master-ui-layout.json`.
 Extract script: `tools/antler-extract/extract_keymap_layers.py <pretty.js> <start> <end> <out.json>`.
