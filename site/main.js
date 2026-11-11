@@ -167,5 +167,164 @@ async function latestRelease() {
   }
 }
 
+// Live test: show exactly when the keyboard reports presses and releases.
+// A web page can't read key depth, only these moments.
+function liveKeyboard(isActive) {
+  const canvas = document.getElementById("liveCanvas");
+  if (!canvas) return { start() {}, stop() {} };
+  const ctx = canvas.getContext("2d");
+  const empty = document.getElementById("liveEmpty");
+  const out = {
+    count: document.getElementById("lvCount"),
+    rate: document.getElementById("lvRate"),
+    gap: document.getElementById("lvGap"),
+    hold: document.getElementById("lvHold"),
+  };
+  const WINDOW_MS = 3000;
+  const MAX_LANES = 4;
+  const css = getComputedStyle(document.documentElement);
+  const col = {
+    teal: css.getPropertyValue("--teal").trim() || "#3CC8B4",
+    line: css.getPropertyValue("--g-line").trim() || "#36383D",
+    text: css.getPropertyValue("--g-body").trim() || "#DCDEE1",
+    muted: css.getPropertyValue("--g-muted").trim() || "#ABAFB6",
+  };
+  const lanes = [];            // { code, label, bars: [{down, up}] , lastUp }
+  const downs = [];            // press times, for the per-second rate
+  let presses = 0, bestGap = Infinity, bestHold = Infinity, raf = 0, running = false;
+
+  const label = (e) => {
+    const c = e.code || "";
+    if (c.startsWith("Key")) return c.slice(3);
+    if (c.startsWith("Digit")) return c.slice(5);
+    if (c.startsWith("Numpad")) return "Num " + c.slice(6);
+    const names = { Space: "Space", ShiftLeft: "L Shift", ShiftRight: "R Shift", ControlLeft: "L Ctrl", ControlRight: "R Ctrl",
+      AltLeft: "L Alt", AltRight: "R Alt", ArrowUp: "Up", ArrowDown: "Down", ArrowLeft: "Left", ArrowRight: "Right",
+      Enter: "Enter", Backspace: "Backspace", Tab: "Tab", Escape: "Esc", CapsLock: "Caps" };
+    return names[c] || (e.key && e.key.length === 1 ? e.key.toUpperCase() : c || e.key);
+  };
+  const lane = (e) => {
+    let l = lanes.find((x) => x.code === e.code);
+    if (!l) {
+      l = { code: e.code, label: label(e), bars: [], lastUp: null };
+      lanes.unshift(l);
+      if (lanes.length > MAX_LANES) lanes.pop();
+    } else {
+      lanes.splice(lanes.indexOf(l), 1);
+      lanes.unshift(l);
+    }
+    return l;
+  };
+  const ms = (v) => (v === Infinity ? "–" : Math.round(v) + " ms");
+
+  function onDown(e) {
+    if (!isActive() || e.repeat || e.metaKey) return;
+    if (e.target.closest && e.target.closest("input, textarea, select")) return;
+    if ([" ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Backspace"].includes(e.key) && !e.ctrlKey && !e.altKey) e.preventDefault();
+    const t = e.timeStamp;
+    const l = lane(e);
+    if (l.bars.length && l.bars[l.bars.length - 1].up === null) return;
+    if (l.lastUp !== null) bestGap = Math.min(bestGap, t - l.lastUp);
+    l.bars.push({ down: t, up: null });
+    presses += 1;
+    downs.push(t);
+    empty.hidden = true;
+    stats();
+    start();
+  }
+  function onUp(e) {
+    if (!isActive()) return;
+    const l = lanes.find((x) => x.code === e.code);
+    if (!l || !l.bars.length) return;
+    const b = l.bars[l.bars.length - 1];
+    if (b.up !== null) return;
+    b.up = e.timeStamp;
+    l.lastUp = b.up;
+    bestHold = Math.min(bestHold, b.up - b.down);
+    stats();
+  }
+  function releaseAll() {
+    const t = performance.now();
+    lanes.forEach((l) => { const b = l.bars[l.bars.length - 1]; if (b && b.up === null) { b.up = t; l.lastUp = null; } });
+  }
+  function stats() {
+    const now = performance.now();
+    while (downs.length && now - downs[0] > 1000) downs.shift();
+    out.count.textContent = String(presses);
+    out.rate.textContent = String(downs.length);
+    out.gap.textContent = ms(bestGap);
+    out.hold.textContent = ms(bestHold);
+  }
+
+  function draw() {
+    const dpr = window.devicePixelRatio || 1;
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+      canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const now = performance.now();
+    const left = 78, right = w - 12, laneH = (h - 26) / MAX_LANES;
+    const x = (t) => right - ((now - t) / WINDOW_MS) * (right - left);
+    // seconds grid
+    ctx.font = "12px " + getComputedStyle(document.body).fontFamily;
+    ctx.fillStyle = col.muted; ctx.strokeStyle = col.line; ctx.lineWidth = 1;
+    for (let s = 0; s <= 3; s++) {
+      const gx = Math.round(right - (s * 1000 / WINDOW_MS) * (right - left)) + 0.5;
+      ctx.beginPath(); ctx.moveTo(gx, 4); ctx.lineTo(gx, h - 22); ctx.stroke();
+      ctx.textAlign = "center"; ctx.fillText(s === 0 ? "now" : "-" + s + " s", gx, h - 6);
+    }
+    lanes.forEach((l, i) => {
+      const y = 6 + i * laneH, bh = Math.max(10, laneH - 14);
+      ctx.textAlign = "right"; ctx.fillStyle = col.text;
+      ctx.fillText(l.label, left - 12, y + bh / 2 + 4);
+      ctx.fillStyle = col.teal;
+      l.bars = l.bars.filter((b) => b.up === null || now - b.up < WINDOW_MS);
+      l.bars.forEach((b) => {
+        const x0 = Math.max(left, x(b.down)), x1 = x(b.up === null ? now : b.up);
+        if (x1 > left) ctx.fillRect(x0, y + 2, Math.max(2, x1 - x0), bh);
+      });
+    });
+    stats();
+    const busy = lanes.some((l) => l.bars.length);
+    if (busy && running) raf = requestAnimationFrame(draw);
+    else raf = 0;
+  }
+  function start() { running = true; if (!raf) raf = requestAnimationFrame(draw); }
+  function stop() { running = false; cancelAnimationFrame(raf); raf = 0; releaseAll(); }
+
+  window.addEventListener("keydown", onDown);
+  window.addEventListener("keyup", onUp);
+  window.addEventListener("blur", () => { releaseAll(); });
+  return { start: () => { running = true; draw(); }, stop };
+}
+
+function demoTabs() {
+  const tabs = [...document.querySelectorAll('.tabs [role="tab"]')];
+  if (!tabs.length) return;
+  let liveOn = false;
+  const live = liveKeyboard(() => liveOn);
+  const select = (tab) => {
+    tabs.forEach((t) => {
+      const on = t === tab;
+      t.setAttribute("aria-selected", String(on));
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute("aria-controls")).hidden = !on;
+    });
+    liveOn = tab.id === "tab-live";
+    if (liveOn) live.start(); else live.stop();
+  };
+  tabs.forEach((t, i) => {
+    t.addEventListener("click", () => select(t));
+    t.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      const next = tabs[(i + (e.key === "ArrowRight" ? 1 : tabs.length - 1)) % tabs.length];
+      select(next); next.focus(); e.preventDefault();
+    });
+  });
+}
+
 rapidTriggerDemo();
+demoTabs();
 latestRelease();

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Kraken Control: a native Windows app for DrunkDeer A75 keyboards</title>
   <meta name="description" content="Set actuation and Rapid Trigger per key, remap layers, paint lighting and switch profiles on DrunkDeer A75 keyboards. One small Windows exe, nothing to install. Unofficial, open source.">
-  <meta name="theme-color" content="#2B1E37">
+  <meta name="theme-color" content="#F4F5F6">
   <link rel="icon" href="img/kraken.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="img/kraken.png">
   <link rel="canonical" href="https://ripdzl.github.io/Kraken-Control/">
@@ -56,51 +56,75 @@
         </div>
 
         <section class="demo" aria-labelledby="demo-title">
-          <h2 id="demo-title">Try Rapid Trigger</h2>
-          <p class="demo-help">Drag the key down, then wiggle it up and down. With Rapid Trigger on, a small lift releases the key and a small push presses it again. Keyboard: focus the key and use the arrow keys, or hold Space.</p>
-
-          <div class="rig">
-            <div class="key-well">
-              <div class="key" id="key" tabindex="0" role="slider"
-                   aria-label="Key depth" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" aria-valuetext="0.00 millimetres, released">
-                <div class="key-cap"><span>W</span></div>
-              </div>
-              <div class="key-shadow" aria-hidden="true"></div>
-            </div>
-
-            <div class="gauge" aria-hidden="true">
-              <div class="gauge-track">
-                <div class="gauge-fill" id="fill"></div>
-                <div class="mark mark-ap" id="markAp"><span>Actuation</span></div>
-                <div class="mark mark-rt" id="markRt"><span id="markRtLabel">Release</span></div>
-              </div>
-              <ol class="gauge-scale">
-                <li>0</li><li>1</li><li>2</li><li>3</li><li>4 mm</li>
-              </ol>
+          <div class="demo-head">
+            <h2 id="demo-title">Rapid Trigger, hands on</h2>
+            <div class="tabs" role="tablist" aria-label="Demo mode">
+              <button role="tab" id="tab-sim" aria-controls="panel-sim" aria-selected="true">Simulate</button>
+              <button role="tab" id="tab-live" aria-controls="panel-live" aria-selected="false" tabindex="-1">Your keyboard</button>
             </div>
           </div>
 
-          <div class="readout" aria-live="polite">
-            <div><span class="label">Depth</span> <span class="num" id="depth">0.00</span><span class="unit">mm</span></div>
-            <div><span class="state" id="state">Released</span></div>
-            <div><span class="label">Presses</span> <span class="num" id="count">0</span></div>
+          <div class="panel" id="panel-sim" role="tabpanel" aria-labelledby="tab-sim">
+            <p class="demo-help">Drag the key down, then wiggle it. With Rapid Trigger on, a small lift releases the key and a small push presses it again. Keyboard: focus the key and use the arrow keys, or hold Space.</p>
+
+            <div class="rig">
+              <div class="key-well">
+                <div class="key" id="key" tabindex="0" role="slider"
+                     aria-label="Key depth" aria-valuemin="0" aria-valuemax="4" aria-valuenow="0" aria-valuetext="0.00 millimetres, released">
+                  <div class="key-cap"><span class="key-main">W</span></div>
+                </div>
+              </div>
+
+              <div class="gauge" aria-hidden="true">
+                <ol class="gauge-scale">
+                  <li>0</li><li>1</li><li>2</li><li>3</li><li>4 mm</li>
+                </ol>
+                <div class="gauge-track">
+                  <div class="gauge-fill" id="fill"></div>
+                  <div class="mark mark-ap" id="markAp"><span>Actuation</span></div>
+                  <div class="mark mark-rt" id="markRt"><span id="markRtLabel">Release</span></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="readout" aria-live="polite">
+              <div><span class="label">Depth</span> <span class="num" id="depth">0.00</span><span class="unit">mm</span></div>
+              <div><span class="state" id="state">Released</span></div>
+              <div><span class="label">Presses</span> <span class="num" id="count">0</span></div>
+            </div>
+
+            <div class="controls">
+              <label class="ctl ctl-check">
+                <input type="checkbox" id="rt" checked>
+                <span>Rapid Trigger</span>
+              </label>
+              <label class="ctl">
+                <span>Actuation point <output id="apOut">1.20 mm</output></span>
+                <input type="range" id="ap" min="0.1" max="4" step="0.1" value="1.2">
+              </label>
+              <label class="ctl">
+                <span>Sensitivity <output id="sensOut">0.15 mm</output></span>
+                <input type="range" id="sens" min="0.05" max="1" step="0.05" value="0.15">
+              </label>
+            </div>
+            <p class="demo-note">Ranges from the A75 Ultra (2025): actuation 0.1–4.0 mm. In the app you set these per key.</p>
           </div>
 
-          <div class="controls">
-            <label class="ctl">
-              <span>Actuation point <output id="apOut">1.20 mm</output></span>
-              <input type="range" id="ap" min="0.1" max="4" step="0.1" value="1.2">
-            </label>
-            <label class="ctl ctl-check">
-              <input type="checkbox" id="rt" checked>
-              <span>Rapid Trigger</span>
-            </label>
-            <label class="ctl">
-              <span>Sensitivity <output id="sensOut">0.15 mm</output></span>
-              <input type="range" id="sens" min="0.05" max="1" step="0.05" value="0.15">
-            </label>
+          <div class="panel" id="panel-live" role="tabpanel" aria-labelledby="tab-live" hidden>
+            <p class="demo-help">Press, hold or wiggle any key on your keyboard. Each bar runs from the moment your keyboard reports the press to the moment it reports the release.</p>
+            <p class="touch-note">This test needs a physical keyboard. Open the page on your PC to try it.</p>
+            <div class="live" id="live">
+              <canvas id="liveCanvas" aria-label="Timeline of your key presses over the last three seconds" role="img"></canvas>
+              <p class="live-empty" id="liveEmpty">Waiting for a key press&hellip;</p>
+            </div>
+            <dl class="stats">
+              <div><dt>Presses</dt><dd class="num" id="lvCount">0</dd></div>
+              <div><dt>In the last second</dt><dd class="num" id="lvRate">0</dd></div>
+              <div><dt>Quickest re-press</dt><dd class="num" id="lvGap">&ndash;</dd></div>
+              <div><dt>Shortest press</dt><dd class="num" id="lvHold">&ndash;</dd></div>
+            </dl>
+            <p class="demo-note">A web page only learns when a key goes down and comes back up, not how deep it is. Try a key with Rapid Trigger on, then off: with it on, the quickest re-press drops sharply because a small lift is enough to release.</p>
           </div>
-          <p class="demo-note">Ranges from the A75 Ultra (2025): actuation 0.1–4.0 mm. The app sets these per key.</p>
         </section>
       </div>
     </section>
@@ -147,7 +171,7 @@
             <p>Save a look as a preset and switch between presets with one click.</p>
           </div>
           <div class="row-media crop crop-light">
-            <img src="img/lighting-gen2-plumb.png" width="1180" height="760" alt="" loading="lazy">
+            <img src="img/lighting-gen2.png" width="1180" height="760" alt="" loading="lazy">
           </div>
         </article>
 

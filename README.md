@@ -88,12 +88,12 @@ product ID.
   <tr>
     <td width="33%"><img src="docs/screenshots/keymap.png" alt="Keymap page"></td>
     <td width="33%"><img src="docs/screenshots/advanced-gen2.png" alt="Advanced keys page on the 2025 A75 Ultra"></td>
-    <td width="33%"><img src="docs/screenshots/lighting-gen2-plumb.png" alt="Lighting page in the Black-Plumb theme"></td>
+    <td width="33%"><img src="docs/screenshots/lighting-gen2.png" alt="Lighting page on the 2025 A75 Ultra"></td>
   </tr>
   <tr>
     <td align="center">Keymap</td>
     <td align="center">Advanced keys (A75 Ultra 2025)</td>
-    <td align="center">Lighting, Black-Plumb theme</td>
+    <td align="center">Lighting (A75 Ultra 2025)</td>
   </tr>
 </table>
 
