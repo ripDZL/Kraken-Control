@@ -56,9 +56,22 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 ## Advanced keys (keymap entry -> table entry k)
 - MT `146 k hold_ms/10` -> MT table [tap(3), hold(3)] at 256·profile + 6k.
 - RS 147 / SOCD 148 / OKS 149 pairs: key A `t k slotB`, key B `t k+1 slotA`; MT entries k = [A, B], k+1 = [B, A]. Official rebuilds the whole MT table (`setAllMtKeyInfo`).
-- TGL `145 k 0` -> TGL table 3 B at 128·profile + 3k. DKS `144 k 0` -> 24 B at 768·profile + 24k (points[4], 4 × (action 3 B + stage bits 2 B)).
+- TGL `145 k 0` -> TGL table 3 B at 128·profile + 3k. DKS `144 k 0` -> 24 B at 768·profile + 24k (points[4], 4 × (action 3 B + stage bits 2 B)); details in "DKS" below.
+- RS (L23528-23600): same pair writes as SOCD with type 147; option actuation 1.50 mm, press / release 0.10 mm is written to both keys' triggers (Kraken keeps travel, as for SOCD). No priority.
+- OKS (L23887-23935): same pair writes with type 149; no trigger write. UI text: releasing one key activates the other.
+- Remove (L24870-24945): official rebuilds the tables without the entry and renumbers every remaining key (`code1` = list position); Kraken frees the entry in place and leaves the others where they are.
 - SOCD priority: trigger `[1]` high nibble (0 last input, 1 / 2); official also sets 1.5 mm actuation, 0.10 press/release on both keys (Kraken keeps travel).
 - User board (fw 121) had two SOCD pairs at slots 88..91 (entries 0..3): factory slots 88 A, 89 S, 90 W, 91 D (matrix order is not row order; T = 19, G = 57).
+
+## DKS (Dynamic Keystroke, table A2 / A3)
+- Write: `sendData(163, 768·profile + 24·k, entry)` or the whole 768 B table (L629-634); read A2 in 56 B chunks (L619-628).
+- Entry (L2048-2137): `[0..4]` points in 0.1 mm = press, bottom, release, top (defaults 10, 30, 30, 10; a 0 is written as the default); then 4 × `[type, code1, code2, bits lo, bits hi]` at offsets 4, 9, 14, 19.
+- Stage bits per action (u16 LE): stage 0 press = bits 0–2, stage 1 bottom = bits 3–5, stage 2 release = bits 6–8, stage 3 top = bit 9. Each field is a thermometer count `n>0 | (n>1)<<1 | (n>2)<<2` (L2159).
+- Editor values (L21449-21575): per stage 0 = off, 1 = tap, n = held until stage + n − 1. Max 4 / 3 / 2 / 1; a span may end on a stage where another starts but not pass it (press ≤ 2 if bottom is set, ≤ 3 if release is set; bottom ≤ 2 if release is set).
+- Writer (L2130-2135): press 4 -> fields 3, 3, 2; press 3 -> 3, 2; bottom 3 -> release field 2 (stages inside a long hold carry the remaining length). Reader (L11445-11453) reverses this; `111 111` with an empty release field reads as press 3.
+- Point limits in the editor (L22192-22226): press 0.1 mm .. bottom; bottom press .. 3.0 mm; release top .. 3.0 mm; top 0.1 mm .. release.
+- Save needs at least one action (L21953, message 20105); new key = four empty actions, points 10 / 30 / 30 / 10 (L22155-22161). Keymap entry `144 k 0`; no trigger write.
+- Impl: `gen2::{Dks, DksBind, dks_stage_bits, dks_spans, dks_entry, set_dks_entry}`; `device2::Table::Dks`; editor `ui2::dks_editor`.
 
 ## Settings block (64 B)
 - `[1]` low nibble system mode (2 = mac) · `[4]` low = polling (1 8k, 2 4k, 3 2k, 4 1k), high = tick (0 off, 1 30, 2 60)
@@ -74,4 +87,4 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - Never used by Kraken: calibration A8/A9 (input reports 0xA0 = calibration stream), reset EE, boot mode 95[06...], ROM erase/write 81/83, firmware update.
 - Func-byte setters (L2346-2390): func[7] bit0 Berserk mode, bits1 stability (Adaptive Stable), bit3 debug mode key, bits5-7 debounce; func[4] low nibble polling, high nibble tick rate; func[1] system mode.
 - Live depth: none on gen-2 (the Test tab uses browser keydown/keyup, L20835).
-- Gaps vs Kraken (2026-11-11): DKS / Rappy Snappy / OKS editors, macros (record + bind), light direction, light position, sleep time, live LED preview (DE), import of the official config export.
+- Gaps vs Kraken (2026-11-11; DKS / Rappy Snappy / OKS editors done the same day): macros (record + bind), light direction, light position, sleep time, live LED preview (DE), import of the official config export.

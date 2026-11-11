@@ -4,7 +4,7 @@
 use std::collections::BTreeSet;
 use std::time::{Duration, Instant};
 
-use dd_proto::gen2::{self, func, Action, Advanced, LayoutKey, PairKind, RtMode, Trigger};
+use dd_proto::gen2::{self, func, Action, Advanced, Dks, LayoutKey, PairKind, RtMode, Trigger};
 use dd_proto::pattern;
 use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, Vec2};
 
@@ -19,12 +19,17 @@ type Tab = Page;
 /// Advanced key being created on the Advanced tab.
 #[derive(Clone, Copy, PartialEq)]
 enum Draft {
-    Socd { keys: [Option<usize>; 2], priority: u8 },
+    /// SOCD / Rappy Snappy / One Key Switch; `priority` is used by SOCD only.
+    Pair { kind: PairKind, keys: [Option<usize>; 2], priority: u8 },
+    /// `slot` is a matrix slot; `entry` is set while editing an existing DKS key.
+    Dks { slot: Option<usize>, entry: Option<usize>, dks: Dks },
     ModTap { key: Option<usize>, tap: Action, hold: Action, hold_ms: u16 },
     Toggle { key: Option<usize>, action: Action },
 }
 
 const KNOB_NAMES: [&str; 3] = ["Knob press", "Knob left", "Knob right"];
+/// DKS stages in stroke order (see `gen2::DksBind`).
+const DKS_STAGES: [&str; 4] = ["Press", "Bottom", "Release", "Top"];
 
 pub struct Gen2Panel {
     dev: device2::Handle,
@@ -43,9 +48,10 @@ pub struct Gen2Panel {
     /// Working keymap (4 layers) and per-key colours; `snap` holds the keyboard's copy.
     keymap: Vec<Vec<Action>>,
     colors: Vec<[u8; 3]>,
-    /// Working advanced-key tables (MT/RS/SOCD/OKS and TGL); DKS is read-only.
+    /// Working advanced-key tables (MT/RS/SOCD/OKS, TGL, DKS).
     mt: Vec<u8>,
     tgl: Vec<u8>,
+    dks: Vec<u8>,
     /// Knob press / left / right matrix slots.
     knob: [Option<u8>; 3],
     /// Knob action selected for remapping (index into `knob`).
@@ -157,6 +163,7 @@ impl Gen2Panel {
             colors: Vec::new(),
             mt: Vec::new(),
             tgl: Vec::new(),
+            dks: Vec::new(),
             knob: [None; 3],
             knob_sel: None,
             draft: None,
@@ -209,6 +216,15 @@ impl Gen2Panel {
         gen2::set_mt_entry(&mut mt, 0, aw, as_);
         gen2::set_mt_entry(&mut mt, 1, as_, aw);
         gen2::set_mt_entry(&mut mt, 2, Action { kind: gen2::kind::KEY, code1: 0, code2: 41 }, Action { kind: gen2::kind::KEY, code1: 1, code2: 0 });
+        // demo: Q = DKS (Q on the way down, E held from the bottom to the top)
+        let at = |name: &str| layout.iter().position(|k| k.name == name).unwrap_or(0);
+        let (q, e) = (at("Q"), at("E"));
+        let mut dks = vec![0u8; gen2::DKS_LEN];
+        let mut demo_dks = Dks::default();
+        demo_dks.binds[0] = gen2::DksBind { action: factory[q], spans: [2, 0, 0, 0] };
+        demo_dks.binds[1] = gen2::DksBind { action: factory[e], spans: [0, 3, 0, 0] };
+        gen2::set_dks_entry(&mut dks, 0, &demo_dks);
+        user0[q] = Action { kind: gen2::kind::DKS, code1: 0, code2: 0 };
         let mut t = Trigger([0xA0, 1, 149, 0, 29, 0, 29, 0]);
         let mut triggers = vec![t; gen2::KEYS];
         for (i, tr) in triggers.iter_mut().enumerate().take(82) {
@@ -236,10 +252,17 @@ impl Gen2Panel {
             colors: (0..gen2::KEYS).map(|i| [(i * 37 % 256) as u8, (120 + i * 13 % 120) as u8, 255 - (i * 23 % 200) as u8]).collect(),
             mt,
             tgl: vec![0; gen2::TGL_LEN],
-            dks: vec![0; gen2::DKS_LEN],
+            dks,
         };
         self.connected = Some(snap.name);
         self.apply(snap);
+        // `--g2draft=dks|rs|oks` opens an editor on the Advanced keys page (screenshots).
+        self.draft = match std::env::args().find_map(|a| a.strip_prefix("--g2draft=").map(str::to_string)).as_deref() {
+            Some("dks") => Some(Draft::Dks { slot: Some(q), entry: Some(0), dks: demo_dks }),
+            Some("rs") => Some(Draft::Pair { kind: PairKind::Rs, keys: [Some(q), Some(e)], priority: 0 }),
+            Some("oks") => Some(Draft::Pair { kind: PairKind::Oks, keys: [Some(q), None], priority: 0 }),
+            _ => None,
+        };
         self.selected = [30usize, 44, 45, 46].into_iter().collect();
         if std::env::args().any(|a| a == "--g2tab=keymap") {
             self.selected = [30usize].into_iter().collect();
@@ -264,6 +287,7 @@ impl Gen2Panel {
         self.colors = s.colors.clone();
         self.mt = s.mt.clone();
         self.tgl = s.tgl.clone();
+        self.dks = s.dks.clone();
         self.knob = gen2::knob_slots(&s.factory[0]);
         self.draft = None;
         self.painting = None;
@@ -328,6 +352,7 @@ impl Gen2Panel {
                     let (work, synced) = match table {
                         Table::Mt => (&mut self.mt, self.snap.as_mut().map(|s| &mut s.mt)),
                         Table::Tgl => (&mut self.tgl, self.snap.as_mut().map(|s| &mut s.tgl)),
+                        Table::Dks => (&mut self.dks, self.snap.as_mut().map(|s| &mut s.dks)),
                     };
                     *work = data.clone();
                     if let Some(s) = synced {
@@ -369,6 +394,9 @@ impl Gen2Panel {
         if s.tgl != self.tgl {
             v.push(Table::Tgl);
         }
+        if s.dks != self.dks {
+            v.push(Table::Dks);
+        }
         v
     }
 
@@ -394,6 +422,7 @@ impl Gen2Panel {
             let data = match table {
                 Table::Mt => self.mt.clone(),
                 Table::Tgl => self.tgl.clone(),
+                Table::Dks => self.dks.clone(),
             };
             self.dev.send(Cmd::SaveTable { profile, table, data });
         }
@@ -528,7 +557,7 @@ impl Gen2Panel {
         match self.tab {
             Tab::Performance => "Choose how far each key travels before it registers, how quickly it resets, and its dead zones.",
             Tab::Keymap => "Change what each key and the knob send. Click a key, then pick its new action.",
-            Tab::Advanced => "Give keys extra jobs: SOCD pairs, Mod Tap (tap for one action, hold for another) and Toggle.",
+            Tab::Advanced => "Give keys extra jobs: SOCD, Rappy Snappy and One Key Switch pairs, Mod Tap, Toggle and DKS.",
             Tab::Lighting => "Changes show on the keyboard straight away. No need to save.",
             Tab::Profiles => "Switch between the four profiles stored on the keyboard.",
             Tab::Settings => "Keyboard options, the look of the app and troubleshooting.",
@@ -646,6 +675,7 @@ impl Gen2Panel {
             colors: self.colors.clone(),
             mt: self.mt.clone(),
             tgl: self.tgl.clone(),
+            dks: self.dks.clone(),
         })
     }
 
@@ -696,6 +726,8 @@ impl Gen2Panel {
         let safe = |a: &Action| *a == Action::default() || picker.contains(a) || factory.iter().any(|l| l.contains(a));
         let mt_ok = g.mt.len() == gen2::MT_LEN;
         let tgl_ok = g.tgl.len() == gen2::TGL_LEN;
+        // Back-ups from before v0.13 carry no DKS table: those keys stay as they are.
+        let dks_ok = g.dks.len() == gen2::DKS_LEN;
         let (mut reset, mut dks) = (0, 0);
         for (l, layer) in g.keymap.iter().enumerate() {
             for (i, v) in layer.iter().enumerate() {
@@ -704,7 +736,8 @@ impl Gen2Panel {
                 let fac = factory.get(l).and_then(|x| x.get(i)).copied().unwrap_or_default();
                 let e = a.code1 as usize;
                 let ok = match a.kind {
-                    // DKS can't be edited here yet: keep what the keyboard has.
+                    gen2::kind::DKS if dks_ok => e < gen2::ADV_ENTRIES && gen2::dks_actions(&g.dks, e).iter().all(safe),
+                    // No DKS table in the file: keep what the keyboard has.
                     gen2::kind::DKS => {
                         if a != cur {
                             dks += 1;
@@ -735,11 +768,14 @@ impl Gen2Panel {
         if tgl_ok {
             self.tgl = g.tgl.clone();
         }
+        if dks_ok {
+            self.dks = g.dks.clone();
+        }
         if reset > 0 {
             notes.push(format!("{} not offered by Kraken, set back to factory", plural(reset, "key action", "key actions")));
         }
         if dks > 0 {
-            notes.push(format!("{} left unchanged (DKS can't be edited in Kraken yet)", plural(dks, "DKS key", "DKS keys")));
+            notes.push(format!("{} left unchanged (this back-up has no DKS data)", plural(dks, "DKS key", "DKS keys")));
         }
 
         // Keyboard settings and lighting.
@@ -1184,7 +1220,8 @@ impl Gen2Panel {
 
     fn draft_keys(&self) -> Vec<usize> {
         match self.draft {
-            Some(Draft::Socd { keys, .. }) => keys.iter().flatten().copied().collect(),
+            Some(Draft::Pair { keys, .. }) => keys.iter().flatten().copied().collect(),
+            Some(Draft::Dks { slot, .. }) => slot.and_then(|s| self.slots.iter().position(|x| *x == Some(s as u8))).into_iter().collect(),
             Some(Draft::ModTap { key, .. }) | Some(Draft::Toggle { key, .. }) => key.into_iter().collect(),
             None => Vec::new(),
         }
@@ -1192,13 +1229,17 @@ impl Gen2Panel {
 
     fn draft_pick(&mut self, i: usize) {
         let Some(slot) = self.slots[i].map(|s| s as usize) else { return };
+        if matches!(self.draft, Some(Draft::Dks { entry: Some(_), .. })) {
+            return; // editing an existing DKS key: the key is fixed
+        }
         if self.draft.is_some() && self.advanced_tag(slot).is_some() {
             self.set_status(format!("{} is already an advanced key — remove it first", self.layout[i].name), true);
             return;
         }
         let base = self.base_action(slot);
         match self.draft.as_mut() {
-            Some(Draft::Socd { keys, .. }) => {
+            Some(Draft::Dks { slot: s, .. }) => *s = Some(slot),
+            Some(Draft::Pair { keys, .. }) => {
                 if keys[0] == Some(i) {
                     keys[0] = None;
                 } else if keys[1] == Some(i) {
@@ -1221,17 +1262,22 @@ impl Gen2Panel {
         }
     }
 
+    /// Name of the key (or knob action) at a matrix slot.
+    fn slot_name(&self, slot: u8) -> String {
+        let i = self.slots.iter().position(|s| *s == Some(slot));
+        match (i, self.knob.iter().position(|k| *k == Some(slot))) {
+            (Some(i), _) => self.layout[i].name.clone(),
+            (None, Some(z)) => KNOB_NAMES[z].to_string(),
+            _ => format!("slot {slot}"),
+        }
+    }
+
     fn advanced(&mut self, ui: &mut egui::Ui) {
-        let Some(snap) = &self.snap else { return };
-        let list = gen2::find_advanced(&self.keymap[0], &self.mt, &self.tgl, &snap.dks);
-        let name_of = |slot: u8| -> String {
-            let i = self.slots.iter().position(|s| *s == Some(slot));
-            match (i, self.knob.iter().position(|k| *k == Some(slot))) {
-                (Some(i), _) => self.layout[i].name.clone(),
-                (None, Some(z)) => KNOB_NAMES[z].to_string(),
-                _ => format!("slot {slot}"),
-            }
-        };
+        if self.snap.is_none() {
+            return;
+        }
+        let list = gen2::find_advanced(&self.keymap[0], &self.mt, &self.tgl, &self.dks);
+        let name_of = |slot: u8| self.slot_name(slot);
         let lbl = |a: &Action| match gen2::label(a) {
             t if t.is_empty() => "nothing".to_string(),
             t => t,
@@ -1239,6 +1285,7 @@ impl Gen2Panel {
         ui.label("Advanced keys on the Main layer:");
         let mut remove: Option<Advanced> = None;
         let mut new_priority: Option<(u8, u8, u8)> = None;
+        let mut edit: Option<(u8, u8)> = None;
         egui::Grid::new("adv").num_columns(3).spacing([14.0, 6.0]).striped(true).show(ui, |ui| {
             if list.is_empty() {
                 ui.label("none");
@@ -1274,11 +1321,12 @@ impl Gen2Panel {
                         ui.label(format!("{}: toggles {}", name_of(*slot), lbl(action)));
                         ui.label("");
                     }
-                    Advanced::Dks { slot, actions, .. } => {
+                    Advanced::Dks { slot, entry, .. } => {
                         ui.strong("DKS");
-                        let acts: Vec<String> = actions.iter().filter(|a| a.kind != 0).map(lbl).collect();
-                        ui.label(format!("{}: {} (edit in the official driver)", name_of(*slot), acts.join(", ")));
-                        ui.label("");
+                        ui.label(format!("{}: {}", name_of(*slot), dks_summary(&gen2::dks_entry(&self.dks, *entry as usize))));
+                        if ui.small_button("Edit").clicked() {
+                            edit = Some((*slot, *entry));
+                        }
                     }
                 }
                 if ui.small_button("Remove").clicked() {
@@ -1291,6 +1339,9 @@ impl Gen2Panel {
             self.triggers[a as usize].set_priority(p);
             self.triggers[b as usize].set_priority([0, 2, 1][p.min(2) as usize]);
         }
+        if let Some((slot, entry)) = edit {
+            self.draft = Some(Draft::Dks { slot: Some(slot as usize), entry: Some(entry as usize), dks: gen2::dks_entry(&self.dks, entry as usize) });
+        }
         if let Some(adv) = remove {
             self.remove_advanced(&adv);
         }
@@ -1299,8 +1350,10 @@ impl Gen2Panel {
         ui.separator();
         ui.horizontal(|ui| {
             ui.label("Add:");
-            if ui.button("SOCD pair").clicked() {
-                self.draft = Some(Draft::Socd { keys: [None, None], priority: 0 });
+            for (kind, name) in [(PairKind::Socd, "SOCD pair"), (PairKind::Rs, "Rappy Snappy"), (PairKind::Oks, "One Key Switch")] {
+                if ui.button(name).clicked() {
+                    self.draft = Some(Draft::Pair { kind, keys: [None, None], priority: 0 });
+                }
             }
             if ui.button("Mod Tap").clicked() {
                 self.draft = Some(Draft::ModTap { key: None, tap: Action::default(), hold: Action { kind: gen2::kind::KEY, code1: 1, code2: 0 }, hold_ms: 200 });
@@ -1308,23 +1361,40 @@ impl Gen2Panel {
             if ui.button("Toggle").clicked() {
                 self.draft = Some(Draft::Toggle { key: None, action: Action::default() });
             }
+            if ui.button("DKS").clicked() {
+                self.draft = Some(Draft::Dks { slot: None, entry: None, dks: Dks::default() });
+            }
         });
         let Some(mut draft) = self.draft else {
-            theme::help(ui, "SOCD: two keys, the last one pressed wins (or a fixed priority). Mod Tap: tap for one action, hold for another. Toggle: one press holds an action until pressed again.");
+            theme::help(ui, "SOCD: two keys, the last one pressed wins (or a fixed priority). Rappy Snappy: two keys, the one pressed deeper wins. One Key Switch: two keys, letting go of one presses the other.");
+            theme::help(ui, "Mod Tap: tap for one action, hold for another. Toggle: one press holds an action until pressed again. DKS: up to four actions at different depths of one key press.");
             return;
         };
         let key_name = |i: Option<usize>| i.map_or("click a key".to_string(), |i| self.layout[i].name.clone());
+        let slot_name = |s: Option<usize>| s.map_or("click a key".to_string(), |s| self.slot_name(s as u8));
         let mut cancel = false;
         let create = match &mut draft {
-            Draft::Socd { keys, priority } => {
-                ui.label(format!("SOCD: {} + {}", key_name(keys[0]), key_name(keys[1])));
-                ui.horizontal(|ui| {
-                    ui.label("Priority");
-                    for (v, n) in ["Last input wins", "First key wins", "Second key wins"].iter().enumerate() {
-                        ui.selectable_value(priority, v as u8, *n);
+            Draft::Pair { kind, keys, priority } => {
+                ui.label(format!("{}: {} + {}", kind.name(), key_name(keys[0]), key_name(keys[1])));
+                match kind {
+                    PairKind::Socd => {
+                        ui.horizontal(|ui| {
+                            ui.label("Priority");
+                            for (v, n) in ["Last input wins", "First key wins", "Second key wins"].iter().enumerate() {
+                                ui.selectable_value(priority, v as u8, *n);
+                            }
+                        });
                     }
-                });
+                    PairKind::Rs => theme::help(ui, "With both keys down, only the one pressed deeper counts; both pressed all the way count together. Key travel settings stay as they are."),
+                    PairKind::Oks => theme::help(ui, "Letting go of one key presses the other for you."),
+                }
                 ui.add_enabled(keys.iter().all(Option::is_some), egui::Button::new("Create")).clicked()
+            }
+            Draft::Dks { slot, entry, dks } => {
+                ui.label(format!("DKS on {}", slot_name(*slot)));
+                dks_editor(ui, dks);
+                let ready = slot.is_some() && !dks.is_empty();
+                ui.add_enabled(ready, egui::Button::new(if entry.is_some() { "Apply" } else { "Create" })).clicked()
             }
             Draft::ModTap { key, tap, hold, hold_ms } => {
                 ui.label(format!("Mod Tap on {}", key_name(*key)));
@@ -1362,17 +1432,37 @@ impl Gen2Panel {
     fn create_advanced(&mut self, d: Draft) -> Result<String, String> {
         let slot = |i: Option<usize>| -> Result<usize, String> { i.and_then(|i| self.slots[i]).map(|s| s as usize).ok_or("pick a key".to_string()) };
         match d {
-            Draft::Socd { keys, priority } => {
+            Draft::Pair { kind, keys, priority } => {
                 let (a, b) = (slot(keys[0])?, slot(keys[1])?);
                 let k = gen2::free_entries(&gen2::mt_entries_used(&self.keymap), 2).ok_or("advanced key table is full")?;
                 let (aa, ab) = (self.base_action(a), self.base_action(b));
                 gen2::set_mt_entry(&mut self.mt, k, aa, ab);
                 gen2::set_mt_entry(&mut self.mt, k + 1, ab, aa);
-                self.keymap[0][a] = Action { kind: gen2::kind::SOCD, code1: k as u8, code2: b as u8 };
-                self.keymap[0][b] = Action { kind: gen2::kind::SOCD, code1: k as u8 + 1, code2: a as u8 };
+                self.keymap[0][a] = Action { kind: kind.kind(), code1: k as u8, code2: b as u8 };
+                self.keymap[0][b] = Action { kind: kind.kind(), code1: k as u8 + 1, code2: a as u8 };
+                // The priority nibble belongs to SOCD; other pairs leave it at "last input".
+                let priority = if kind == PairKind::Socd { priority.min(2) } else { 0 };
                 self.triggers[a].set_priority(priority);
-                self.triggers[b].set_priority([0, 2, 1][priority.min(2) as usize]);
-                Ok("SOCD pair added".into())
+                self.triggers[b].set_priority([0, 2, 1][priority as usize]);
+                Ok(format!("{} pair added", kind.name()))
+            }
+            Draft::Dks { slot, entry, mut dks } => {
+                let s = slot.ok_or("pick a key")?;
+                for b in dks.binds.iter_mut() {
+                    if b.action.kind == 0 {
+                        b.spans = [0; 4];
+                    }
+                }
+                if dks.is_empty() {
+                    return Err("Bind at least one action".into());
+                }
+                let k = match entry {
+                    Some(k) => k,
+                    None => gen2::free_entries(&gen2::dks_entries_used(&self.keymap), 1).ok_or("DKS table is full")?,
+                };
+                gen2::set_dks_entry(&mut self.dks, k, &dks);
+                self.keymap[0][s] = Action { kind: gen2::kind::DKS, code1: k as u8, code2: 0 };
+                Ok(if entry.is_some() { "DKS key updated" } else { "DKS key added" }.into())
             }
             Draft::ModTap { key, tap, hold, hold_ms } => {
                 let s = slot(key)?;
@@ -1410,7 +1500,13 @@ impl Gen2Panel {
                 self.keymap[0][*slot as usize] = factory(*slot);
                 gen2::set_tgl_entry(&mut self.tgl, *entry as usize, Action::default());
             }
-            Advanced::Dks { slot, .. } => self.keymap[0][*slot as usize] = factory(*slot),
+            Advanced::Dks { slot, entry, .. } => {
+                self.keymap[0][*slot as usize] = factory(*slot);
+                gen2::clear_dks_entry(&mut self.dks, *entry as usize);
+            }
+        }
+        if matches!(self.draft, Some(Draft::Dks { entry: Some(_), .. })) {
+            self.draft = None;
         }
         self.set_status("Advanced key removed — Save to keyboard to apply", false);
     }
@@ -1647,19 +1743,114 @@ impl Gen2Panel {
 fn action_combo(ui: &mut egui::Ui, id: &str, name: &str, action: &mut Action) {
     ui.horizontal(|ui| {
         ui.add_sized([60.0, 18.0], egui::Label::new(name));
-        let text = match gen2::label(action) {
-            t if t.is_empty() => "nothing".to_string(),
-            t => t,
-        };
-        egui::ComboBox::from_id_salt(id).selected_text(text).height(320.0).show_ui(ui, |ui| {
-            for (cat, items) in gen2::picker() {
-                ui.label(egui::RichText::new(*cat).color(pal().muted));
-                for item in items {
-                    ui.selectable_value(action, item.action, &item.label);
+        action_pick(ui, id, action);
+    });
+}
+
+fn action_pick(ui: &mut egui::Ui, id: impl std::hash::Hash, action: &mut Action) {
+    let text = match gen2::label(action) {
+        t if t.is_empty() => "nothing".to_string(),
+        t => t,
+    };
+    egui::ComboBox::from_id_salt(id).selected_text(text).height(320.0).show_ui(ui, |ui| {
+        for (cat, items) in gen2::picker() {
+            ui.label(egui::RichText::new(*cat).color(pal().muted));
+            for item in items {
+                ui.selectable_value(action, item.action, &item.label);
+            }
+        }
+    });
+}
+
+/// What a span of `len` stages starting at `stage` does, e.g. "Press to Release".
+fn dks_span_name(stage: usize, len: u8) -> String {
+    match len {
+        0 => "off".into(),
+        1 => "Tap".into(),
+        n => format!("Hold to {}", DKS_STAGES[(stage + n as usize - 1).min(3)]),
+    }
+}
+
+/// One line for the Advanced keys list: `A (Press), B (Bottom to Top)`.
+fn dks_summary(d: &Dks) -> String {
+    let parts: Vec<String> = d
+        .binds
+        .iter()
+        .filter(|b| b.action.kind != 0)
+        .map(|b| {
+            let spans: Vec<String> = (0..4)
+                .filter(|&s| b.spans[s] > 0)
+                .map(|s| match b.spans[s] {
+                    1 => DKS_STAGES[s].to_string(),
+                    n => format!("{} to {}", DKS_STAGES[s], DKS_STAGES[(s + n as usize - 1).min(3)]),
+                })
+                .collect();
+            let when = if spans.is_empty() { "never".to_string() } else { spans.join(", ") };
+            format!("{} ({when})", gen2::label(&b.action))
+        })
+        .collect();
+    if parts.is_empty() {
+        "no actions".into()
+    } else {
+        parts.join(" · ")
+    }
+}
+
+/// DKS editor: the four stage depths, then one row per action with what it
+/// does at each stage. Choosing a longer hold clears the stages it passes.
+fn dks_editor(ui: &mut egui::Ui, dks: &mut Dks) {
+    ui.horizontal(|ui| {
+        for (i, name) in DKS_STAGES.iter().enumerate() {
+            let (lo, hi) = gen2::dks_point_range(&dks.points, i);
+            let mut mm = f32::from(dks.points[i]) / 10.0;
+            ui.label(*name);
+            let drag = egui::DragValue::new(&mut mm).range(f32::from(lo) / 10.0..=f32::from(hi) / 10.0).speed(0.02).fixed_decimals(1).suffix(" mm");
+            if ui.add(drag).changed() {
+                dks.points[i] = ((mm * 10.0).round() as u8).clamp(lo, hi);
+            }
+            ui.add_space(6.0);
+        }
+    });
+    theme::help(ui, "Depth of each stage: Press and Bottom on the way down, Release and Top on the way back up.");
+    egui::Grid::new("dks_binds").num_columns(6).spacing([10.0, 6.0]).show(ui, |ui| {
+        ui.label("");
+        for name in DKS_STAGES {
+            ui.label(theme::hint(name));
+        }
+        ui.end_row();
+        for (k, bind) in dks.binds.iter_mut().enumerate() {
+            action_pick(ui, ("dks_action", k), &mut bind.action);
+            let active = bind.action.kind != 0;
+            for stage in 0..4 {
+                // Inside an earlier, longer hold: nothing can start here.
+                let held = (0..stage).any(|p| p + bind.spans[p] as usize > stage + 1);
+                if held {
+                    ui.label(theme::hint("held"));
+                    continue;
+                }
+                let mut len = bind.spans[stage];
+                ui.add_enabled_ui(active, |ui| {
+                    egui::ComboBox::from_id_salt(("dks_span", k, stage)).width(118.0).selected_text(dks_span_name(stage, len)).show_ui(ui, |ui| {
+                        for n in 0..=gen2::DKS_SPAN_MAX[stage] {
+                            ui.selectable_value(&mut len, n, dks_span_name(stage, n));
+                        }
+                    });
+                });
+                if len != bind.spans[stage] {
+                    bind.spans[stage] = len;
+                    for inner in stage + 1..(stage + len as usize).saturating_sub(1).min(4) {
+                        bind.spans[inner] = 0;
+                    }
+                    bind.spans = gen2::dks_normalize(bind.spans);
                 }
             }
-        });
+            if active && ui.small_button("Clear").clicked() {
+                *bind = gen2::DksBind::default();
+            }
+            ui.end_row();
+        }
     });
+    theme::help(ui, "Tap presses and lets go at that stage. Hold keeps the action down until the stage named.");
 }
 
 /// Draws `text` shrunk (down to 8 px, then wrapped) to fit `max_w`.

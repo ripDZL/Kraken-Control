@@ -37,6 +37,7 @@ pub struct Snapshot {
 pub enum Table {
     Mt,
     Tgl,
+    Dks,
 }
 
 impl Table {
@@ -44,6 +45,7 @@ impl Table {
         match self {
             Table::Mt => (cmd::MT_READ, cmd::MT_WRITE, gen2::mt_base(profile), gen2::MT_LEN),
             Table::Tgl => (cmd::TGL_READ, cmd::TGL_WRITE, gen2::tgl_base(profile), gen2::TGL_LEN),
+            Table::Dks => (cmd::DKS_READ, cmd::DKS_WRITE, gen2::dks_base(profile), gen2::DKS_LEN),
         }
     }
 }

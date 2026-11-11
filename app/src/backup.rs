@@ -81,6 +81,9 @@ pub struct Gen2 {
     /// Advanced-key tables (Mod Tap / SOCD / RS / OKS, Toggle).
     pub mt: Vec<u8>,
     pub tgl: Vec<u8>,
+    /// DKS table; missing in files written before v0.13.
+    #[serde(default)]
+    pub dks: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]

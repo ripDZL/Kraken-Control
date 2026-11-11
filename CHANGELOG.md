@@ -4,6 +4,7 @@ Notable changes to Kraken Control. Versions follow [Semantic Versioning](https:/
 
 ## Unreleased
 
+- **Advanced keys (A75 Ultra 2025):** new editors for Rappy Snappy and One Key Switch pairs and for DKS (Dynamic Keystroke): up to four actions on one key, each tapped or held between four depths of the stroke. DKS keys made in the official driver can be edited, and are included in export / import.
 - **Live key depth (A75 Master / Ultra):** Performance › Show live key depth shades each key as you press it on your keyboard, and marks its actuation point. Needs Turbo off, like the official driver.
 - **Knob (A75 Master / Ultra, firmware 0.063+):** Keymap › click the knob to set Rotate Right / Left, Press, Lift and Press + Rotate actions. Saved with the keymap and included in export / import.
 

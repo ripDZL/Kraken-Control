@@ -42,6 +42,7 @@ pub mod cmd {
     pub const COLORS_WRITE: u8 = 0x0B;
     /// Advanced-key tables (per profile): DKS 768 B, MT/RS/SOCD/OKS 256 B, TGL 128 B.
     pub const DKS_READ: u8 = 0xA2;
+    pub const DKS_WRITE: u8 = 0xA3;
     pub const MT_READ: u8 = 0xA4;
     pub const MT_WRITE: u8 = 0xA5;
     pub const TGL_READ: u8 = 0xA6;
@@ -444,8 +445,178 @@ pub fn set_tgl_entry(raw: &mut [u8], i: usize, a: Action) {
 
 /// DKS entry `i`: the four actions (display only).
 pub fn dks_actions(raw: &[u8], i: usize) -> [Action; 4] {
-    let o = 24 * i;
+    let o = DKS_ENTRY * i;
     [4, 9, 14, 19].map(|a| Action::from_bytes(&raw[o + a..o + a + 3]))
+}
+
+// ---------------------------------------------------------------- DKS (dynamic keystroke)
+//
+// One key, up to four actions, each pressed and released at four stages of the
+// stroke: 0 press past point 0, 1 bottom (point 1), 2 release past point 2,
+// 3 top (point 3). Entry (24 B, official `setDksKeyInfo` / `getDksKeyInfo`):
+// points[4] in 0.1 mm, then 4 x (action 3 B + stage bits u16 LE).
+// Stage bits: stage 0 = bits 0-2, stage 1 = bits 3-5, stage 2 = bits 6-8,
+// stage 3 = bit 9; each field is a thermometer count (1 -> 001, 2 -> 011, 3 -> 111).
+
+pub const DKS_ENTRY: usize = 24;
+/// Official defaults: press 1.0 mm, bottom 3.0 mm, release 3.0 mm, top 1.0 mm.
+pub const DKS_POINTS_DEFAULT: [u8; 4] = [10, 30, 30, 10];
+/// Largest point value (3.0 mm).
+pub const DKS_POINT_MAX: u8 = 30;
+/// Longest span that can start at each stage.
+pub const DKS_SPAN_MAX: [u8; 4] = [4, 3, 2, 1];
+
+/// One DKS action. `spans[s]` = 0: nothing starts at stage `s`; 1: tap at `s`;
+/// n > 1: pressed at `s` and held until stage `s + n - 1`. Stages inside a
+/// longer span are 0 here (the keyboard's continuation bits are added on write).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DksBind {
+    pub action: Action,
+    pub spans: [u8; 4],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Dks {
+    /// Stage points in 0.1 mm: press, bottom, release, top.
+    pub points: [u8; 4],
+    pub binds: [DksBind; 4],
+}
+
+impl Default for Dks {
+    fn default() -> Self {
+        Dks { points: DKS_POINTS_DEFAULT, binds: [DksBind::default(); 4] }
+    }
+}
+
+impl Dks {
+    /// The official driver refuses to save a DKS key without any action.
+    pub fn is_empty(&self) -> bool {
+        self.binds.iter().all(|b| b.action.kind == 0)
+    }
+}
+
+fn thermometer(n: u8) -> u16 {
+    u16::from(n > 0) | u16::from(n > 1) << 1 | u16::from(n > 2) << 2
+}
+
+/// Longest span the official editor allows at `stage`, given the other spans
+/// (a span may end on a stage where another starts, but not pass it).
+pub fn dks_span_limit(spans: &[u8; 4], stage: usize) -> u8 {
+    match stage {
+        0 if spans[1] > 0 => 2,
+        0 if spans[2] > 0 => 3,
+        1 if spans[2] > 0 => 2,
+        s => DKS_SPAN_MAX[s.min(3)],
+    }
+}
+
+/// Spans with every value inside the editor's limits and nothing under a longer span.
+pub fn dks_normalize(mut spans: [u8; 4]) -> [u8; 4] {
+    spans[3] = spans[3].min(1);
+    spans[2] = spans[2].min(2);
+    spans[1] = spans[1].min(dks_span_limit(&spans, 1));
+    spans[0] = spans[0].min(dks_span_limit(&spans, 0));
+    spans
+}
+
+/// Stage bits of one action, as the official driver writes them: stages inside
+/// a 3- or 4-stage span carry the remaining length.
+pub fn dks_stage_bits(spans: [u8; 4]) -> u16 {
+    let [ds, mut de, mut us, ue] = dks_normalize(spans);
+    let ds = match ds {
+        4 => {
+            (de, us) = (3, 2);
+            3
+        }
+        3 => {
+            de = 2;
+            3
+        }
+        n => {
+            if de == 3 {
+                us = 2;
+            }
+            n
+        }
+    };
+    thermometer(ds) | thermometer(de) << 3 | thermometer(us) << 6 | thermometer(ue.min(1)) << 9
+}
+
+/// Inverse of [`dks_stage_bits`] (official reader, continuation stages cleared).
+pub fn dks_spans(bits: u16) -> [u8; 4] {
+    let top = |v: u16| -> u8 {
+        match v & 7 {
+            v if v & 4 != 0 => 3,
+            v if v & 2 != 0 => 2,
+            v => v as u8,
+        }
+    };
+    let (mut ds, mut de, mut us, ue) = (top(bits), top(bits >> 3), top(bits >> 6 & 3), (bits >> 9 & 1) as u8);
+    if ds == 3 && de == 3 {
+        if us == 0 {
+            de = 0;
+        } else {
+            (ds, de, us) = (4, 0, 0);
+        }
+    }
+    if ds == 3 {
+        de = 0;
+    }
+    if de == 3 {
+        us = 0;
+    }
+    [ds, de, us, ue]
+}
+
+/// Value range of point `i` (0.1 mm): press <= bottom, top <= release.
+pub fn dks_point_range(points: &[u8; 4], i: usize) -> (u8, u8) {
+    let or = |v: u8, d: u8| if v == 0 { d } else { v };
+    match i {
+        0 => (1, or(points[1], DKS_POINT_MAX).min(DKS_POINT_MAX)),
+        1 => (or(points[0], 10).min(DKS_POINT_MAX), DKS_POINT_MAX),
+        2 => (or(points[3], 10).min(DKS_POINT_MAX), DKS_POINT_MAX),
+        _ => (1, or(points[2], DKS_POINT_MAX).min(DKS_POINT_MAX)),
+    }
+}
+
+/// DKS entry `i` of a raw table.
+pub fn dks_entry(raw: &[u8], i: usize) -> Dks {
+    let e = &raw[DKS_ENTRY * i..DKS_ENTRY * (i + 1)];
+    let mut d = Dks { points: [e[0], e[1], e[2], e[3]], ..Dks::default() };
+    for (k, b) in d.binds.iter_mut().enumerate() {
+        let o = 4 + 5 * k;
+        b.action = Action::from_bytes(&e[o..o + 3]);
+        b.spans = dks_spans(u16::from_le_bytes([e[o + 3], e[o + 4]]));
+    }
+    d
+}
+
+/// Writes DKS entry `i`; zero points become the official defaults.
+pub fn set_dks_entry(raw: &mut [u8], i: usize, d: &Dks) {
+    let e = &mut raw[DKS_ENTRY * i..DKS_ENTRY * (i + 1)];
+    for (k, p) in d.points.iter().enumerate() {
+        e[k] = if *p == 0 { DKS_POINTS_DEFAULT[k] } else { (*p).min(DKS_POINT_MAX) };
+    }
+    for (k, b) in d.binds.iter().enumerate() {
+        let o = 4 + 5 * k;
+        e[o..o + 3].copy_from_slice(&[b.action.kind, b.action.code1, b.action.code2]);
+        e[o + 3..o + 5].copy_from_slice(&dks_stage_bits(b.spans).to_le_bytes());
+    }
+}
+
+/// Zeroes DKS entry `i` (what the official driver leaves for unused entries).
+pub fn clear_dks_entry(raw: &mut [u8], i: usize) {
+    raw[DKS_ENTRY * i..DKS_ENTRY * (i + 1)].fill(0);
+}
+
+pub fn dks_entries_used(layers: &[Vec<Action>]) -> Vec<bool> {
+    let mut used = vec![false; ADV_ENTRIES];
+    for a in layers.iter().flatten() {
+        if a.kind == kind::DKS && (a.code1 as usize) < ADV_ENTRIES {
+            used[a.code1 as usize] = true;
+        }
+    }
+    used
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -947,6 +1118,77 @@ mod tests {
         let mut t = Trigger([0xA0, 0x01, 0, 0, 0, 0, 0, 0]);
         t.set_priority(2);
         assert_eq!((t.0[1], t.priority(), t.mode()), (0x21, 2, RtMode::On));
+    }
+
+    #[test]
+    fn dks_stage_bits_match_official() {
+        // Official writer: thermometer fields, continuation bits under long spans.
+        for (spans, bits) in [
+            ([0, 0, 0, 0], 0x000),
+            ([1, 0, 0, 0], 0x001),
+            ([2, 0, 0, 0], 0x003),
+            ([3, 0, 0, 0], 0x01F), // 111 + stage 1 = 011
+            ([4, 0, 0, 0], 0x0FF), // 111, 111, stage 2 = 011
+            ([4, 0, 0, 1], 0x2FF),
+            ([0, 3, 0, 0], 0x0F8), // stage 1 = 111, stage 2 = 011
+            ([1, 1, 1, 1], 0x249),
+            ([2, 2, 2, 1], 0x2DB),
+            ([3, 0, 1, 0], 0x05F),
+            ([3, 0, 2, 1], 0x2DF),
+        ] {
+            assert_eq!(dks_stage_bits(spans), bits, "{spans:?}");
+            assert_eq!(dks_spans(bits), spans, "{bits:#x}");
+        }
+        // Spans the editor can't produce are cut back to its limits.
+        assert_eq!(dks_normalize([4, 1, 0, 0]), [2, 1, 0, 0]);
+        assert_eq!(dks_normalize([4, 0, 1, 0]), [3, 0, 1, 0]);
+        assert_eq!(dks_normalize([0, 3, 2, 9]), [0, 2, 2, 1]);
+        assert_eq!(dks_span_limit(&[0, 0, 0, 1], 0), 4);
+        // Official reader quirk: 111/111 without stage-2 bits reads as a 3-stage span.
+        assert_eq!(dks_spans(0x03F), [3, 0, 0, 0]);
+    }
+
+    #[test]
+    fn dks_entry_golden() {
+        let key = |c: u8| Action { kind: kind::KEY, code1: 0, code2: c };
+        let mut d = Dks::default();
+        assert!(d.is_empty());
+        d.binds[0] = DksBind { action: key(4), spans: [1, 0, 0, 0] };
+        d.binds[1] = DksBind { action: key(5), spans: [0, 1, 0, 0] };
+        d.binds[3] = DksBind { action: key(6), spans: [4, 0, 0, 1] };
+        let mut raw = vec![0u8; DKS_LEN];
+        set_dks_entry(&mut raw, 1, &d);
+        #[rustfmt::skip]
+        let want = [
+            10, 30, 30, 10,
+            16, 0, 4, 0x01, 0x00,
+            16, 0, 5, 0x08, 0x00,
+            0, 0, 0, 0x00, 0x00,
+            16, 0, 6, 0xFF, 0x02,
+        ];
+        assert_eq!(raw[24..48], want);
+        assert!(raw[..24].iter().chain(&raw[48..]).all(|b| *b == 0));
+        assert_eq!(dks_entry(&raw, 1), d);
+        assert_eq!(dks_actions(&raw, 1), [key(4), key(5), Action::default(), key(6)]);
+        // Zero points are written as the official defaults; values are capped at 3.0 mm.
+        set_dks_entry(&mut raw, 0, &Dks { points: [0, 200, 0, 5], ..d });
+        assert_eq!(raw[..4], [10, 30, 30, 5]);
+        clear_dks_entry(&mut raw, 0);
+        assert!(raw[..24].iter().all(|b| *b == 0));
+        // Point ranges: press <= bottom, top <= release.
+        assert_eq!(dks_point_range(&[10, 25, 30, 12], 0), (1, 25));
+        assert_eq!(dks_point_range(&[10, 25, 30, 12], 1), (10, 30));
+        assert_eq!(dks_point_range(&[10, 25, 28, 12], 2), (12, 30));
+        assert_eq!(dks_point_range(&[10, 25, 28, 12], 3), (1, 28));
+        // Table address and write framing (official `sendData(163, 768 * profile, ...)`).
+        assert_eq!(dks_base(2), 1536);
+        let pk = write_region(cmd::DKS_WRITE, dks_base(0), &raw);
+        assert_eq!(pk.len(), 14);
+        assert_eq!(pk[0][..2], [GROUP, 0xA3]);
+        let layer = vec![Action { kind: kind::DKS, code1: 1, code2: 0 }];
+        let used = dks_entries_used(&[layer]);
+        assert_eq!(free_entries(&used, 1), Some(0));
+        assert!(used[1]);
     }
 
     #[test]

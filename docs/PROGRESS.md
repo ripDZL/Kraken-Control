@@ -102,3 +102,13 @@
 - Gen-1 live key depth: `dd-proto::packets::DepthFrame` (FD 06, golden tests), device worker polls `FD 03 01` 20 ms after each frame while on (quiet logging, stops after 5 empty frames, sends `FD 03 00` when off; `request()` ignores stray FD 06). UI: Performance > Whole keyboard > Show live key depth (disabled while the keyboard has Turbo on), shading + amber actuation line on keys, tooltip shows depth. Demo: `--demo --tab=performance --live-depth` animates W/A/S/D.
 - Gen-1 knob: `dd-proto::knob` (6 events, golden tests), `Cmd::SaveKnob` (C1 acks), store `knobs` per model, Keymap page: click knob -> knob editor (picker), Save writes all six; backup `Gen1.knob` (optional, checked against the picker).
 - Tests: dd-proto 44, app 16; clippy clean both configs. Hardware untested.
+
+## 2026-11-11 (web-driver parity, part 2: gen-2 DKS / RS / OKS)
+- Repo state at start: `main` a562e15, CI green; local folder on the PC was 5 commits behind (user runs `git pull`).
+- Bundle: `gen2-bundle/*.js` staged read-only, beautified with js-beautify 1.15.1 (`app_page-feab963f2440235f.js`, SHA-256 `7cdf9668…a9de82`); DKS / RS / OKS facts + line refs in `docs/protocol-gen2.md`.
+- `dd-proto::gen2`: `Dks` / `DksBind` (spans per stage), `dks_stage_bits` / `dks_spans` (official writer / reader incl. continuation bits), `dks_entry` / `set_dks_entry` / `clear_dks_entry`, `dks_point_range`, `dks_span_limit` / `dks_normalize`, `dks_entries_used`, `cmd::DKS_WRITE` (A3). Golden tests `dks_stage_bits_match_official`, `dks_entry_golden`.
+- App: `device2::Table::Dks` (write + read-back verify like MT / TGL), `Gen2Panel.dks` working copy, `Draft::Pair { kind }` (SOCD / RS / OKS share one path; priority only for SOCD), `Draft::Dks` (new or Edit of an existing entry), `dks_editor` (four depths, action x stage grid: off / Tap / Hold to <stage>; longer hold clears the stages it passes), `dks_summary` in the list. Remove clears the DKS entry.
+- Back-up: `Gen2.dks` (serde default; older files keep the keyboard's DKS keys). Import accepts DKS keys whose four actions are picker / factory actions.
+- Demo: Q = DKS; `--g2draft=dks|rs|oks` opens an editor for screenshots. `docs/screenshots/advanced-gen2.png` retaken.
+- Verified (Linux demo, XTest clicks): Edit -> Press "Hold to Top" -> Apply -> list shows "Q (Press to Top)", page marked unsaved. Tests: dd-proto 46, app 16; clippy clean; check-win OK. Hardware untested.
+- Kept from SOCD: RS does not change the two keys' travel (official writes actuation 1.50, press / release 0.10 mm); entries are freed in place, not renumbered.

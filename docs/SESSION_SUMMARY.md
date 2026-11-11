@@ -26,9 +26,10 @@ Current state and handoff. History is in PROGRESS.md.
 - v0.12.0 Export / Import with real file dialogs, import into a fresh install, then Save to keyboard (both boards).
 - Software renderer checks (DPI, resize, clipboard, minimise), memory vs GPU.
 - Gen-1 Lighting (v0.9) on hardware; gen-2 Toggle add/remove; tray agent end-to-end.
+- Gen-2 DKS / Rappy Snappy / One Key Switch editors (2026-11-11): demo-tested only. Check list in TODO "Web-driver parity".
 
 ## Next
 1. User tests on hardware: gen-1 live key depth (Performance) and knob (Keymap), then the v0.12.0 zip items still open.
-2. Web-driver parity, gen-2 (A75 Ultra 2025), in order: DKS / Rappy Snappy / OKS editors -> macros -> light direction, position, sleep time, live LED preview (DE) -> import of the official config export. Bundle: `C:\...\Drunk Deer\gen2-bundle\` (request read access; beautify with js-beautify 1.15.1). Inventory in `docs/protocol-gen2.md`.
+2. Web-driver parity, gen-2 (A75 Ultra 2025): DKS / Rappy Snappy / OKS editors DONE (unreleased, on `main`). Next in order: macros (0C / 0D, action 112) -> light direction, position, sleep time, live LED preview (DE) -> import of the official config export. Bundle: `C:\...\Drunk Deer\gen2-bundle\` (request read access, stage the JS, beautify with js-beautify 1.15.1 -> line refs match `docs/protocol-gen2.md`).
 3. Gen-1 bundle: ask the user to attach "New folder (21).zip" (gen-1 only, = live site, SHA-256 `0aa5b587f453d1b8…`), or read it in the built-in browser (`fetch('/js/index.exKUY8vl.js')` on beta.drunkdeer-antler.com); shells can't reach the site. Gen-2 bundle is only in `…\Drunk Deer\gen2-bundle\`.
 4. UI overhaul remainder: gen-2 Performance two-card layout; restyle Keymap / Advanced / Lighting editors.

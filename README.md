@@ -79,8 +79,9 @@ product ID.
 
 - Rapid Trigger off / on / continuous, top and bottom dead zones.
 - Four layers (Main, FN1–FN3) and the knob (press, turn left, turn right).
-- Advanced keys: SOCD pairs with priority, Mod Tap, Toggle. Existing DKS,
-  Rappy Snappy and One Key Switch keys are listed and can be removed.
+- Advanced keys: SOCD pairs with priority, Rappy Snappy, One Key Switch,
+  Mod Tap, Toggle and DKS (up to four actions at different depths of one
+  key press).
 - Polling rate, tick rate, anti-shake, Adaptive Stable, Win / Alt+Tab /
   Alt+F4 locks.
 
