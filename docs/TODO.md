@@ -55,6 +55,8 @@
 - [x] Gen-1: knob, 6 actions (Keymap > click the knob).
 - [ ] Hardware: both of the above on A75 Master / Ultra (check log for FD 06 frames, C1 acks).
 - [x] Gen-2: DKS / Rappy Snappy / OKS editors (Advanced keys > Add; DKS rows have Edit).
+- [x] User on A75 Ultra 2025, build a655f15 (2026-11-11): "everything seems okay" after the DKS / RS / OKS / macro check list; not itemised, no log seen. Items below stay open until confirmed one by one.
+- [ ] Live key depth on gen-2 (user asked 2026-11-11): not possible from the official protocol — the 2025 driver has no travel stream (re-checked bundle: no depth command or page; Test tab = browser key events). Revisit only if a newer official driver adds it.
 - [ ] Hardware (A75 Ultra 2025): DKS create / edit / remove -> log shows `Saved Dks table (verified by read-back)` and the key behaves as set; DKS key made in the official driver reads back the same spans; RS pair (does it work with travel left as is? official writes 1.50 / 0.10 / 0.10 mm to both keys); OKS pair.
 - [x] Gen-2: macros (Advanced keys > Macros: record / edit / put on a key; 2026-11-11, demo-tested).
 - [ ] Hardware (A75 Ultra 2025): log line at connect (no `macro block not readable`); record a macro, Save -> `Saved macros (verified by read-back)`, key plays it; Reload keeps it on the same M number; macro made in the official driver shows up; Win / right-hand modifiers picked by hand play correctly.

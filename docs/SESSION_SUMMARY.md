@@ -26,7 +26,7 @@ Current state and handoff. History is in PROGRESS.md.
 - v0.12.0 Export / Import with real file dialogs, import into a fresh install, then Save to keyboard (both boards).
 - Software renderer checks (DPI, resize, clipboard, minimise), memory vs GPU.
 - Gen-1 Lighting (v0.9) on hardware; gen-2 Toggle add/remove; tray agent end-to-end.
-- Gen-2 DKS / Rappy Snappy / One Key Switch editors and macros (2026-11-11): demo-tested only. Check list in TODO "Web-driver parity".
+- Gen-2 DKS / Rappy Snappy / One Key Switch editors and macros (2026-11-11): user ran build a655f15 on the 2025 A75 Ultra, "everything seems okay" (not itemised, no log). Check list in TODO "Web-driver parity".
 
 ## Next
 1. User tests on hardware: gen-1 live key depth (Performance) and knob (Keymap), then the v0.12.0 zip items still open.
