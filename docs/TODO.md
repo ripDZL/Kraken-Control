@@ -50,8 +50,8 @@
 
 ## Release / repo
 - [x] v0.12.0 draft release built by CI (zip + .sha256).
-- [ ] Publish v0.12.0 (What's new = CHANGELOG entry).
-- [ ] Repo settings (user): upload `docs/social-preview.png` (Settings > General > Social preview); enable private vulnerability reporting (SECURITY.md points to it).
+- [x] Published v0.12.0 (2026-11-10, Latest) with CHANGELOG notes; topics set; private vulnerability reporting on.
+- [ ] Repo settings (user): upload `docs/social-preview.png` (Settings > General > Social preview). Scripted upload from the built-in browser did not stick.
 - [ ] Optional: release workflow fills What's new from CHANGELOG.
 
 ## Back-up (v0.12.0)

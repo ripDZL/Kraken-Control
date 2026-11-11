@@ -4,7 +4,7 @@ Current state and handoff. History is in PROGRESS.md.
 
 ## State (2026-11-10)
 - Kraken Control v0.12.0: native Rust app for DrunkDeer A75 Master/Ultra (gen-1, VID 352D) and A75 Ultra 2025 (gen-2, 19F5:FB3E). Public at github.com/ripDZL/Kraken-Control (`main`), MIT.
-- Release v0.12.0 built by `.github/workflows/release.yml` on windows-latest (tests green on Windows), zip 1.6 MB (exe 3.1 MB, static CRT) + .sha256.
+- Release v0.12.0 published (Latest), built by `.github/workflows/release.yml` on windows-latest (tests green on Windows), zip 1.6 MB (exe 3.1 MB, static CRT) + .sha256. Repo: topics set, private vulnerability reporting on, community files incl. CODE_OF_CONDUCT; social preview upload still manual.
 - CI (`ci.yml`, Windows, stable Rust 1.99: clippy -D warnings + tests) green on `main`.
 - Local folder `drunkdeer-rs` on the user's PC is a git working copy of `main` (upstream origin/main). Commits must use `228260327+ripDZL@users.noreply.github.com` (never the account email; GitHub email privacy is on).
 
