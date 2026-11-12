@@ -208,12 +208,23 @@ impl App {
             app.tab = page;
         }
         let rdt_demo = args.iter().any(|a| a == "--tab=rdt");
+        // `--import=<file>` opens the import dialog for that file (screenshots / testing).
+        let import = args.iter().find_map(|a| a.strip_prefix("--import=")).map(std::path::PathBuf::from);
         if demo {
             app.live_depth = args.iter().any(|a| a == "--live-depth");
             app.enter_demo();
             if rdt_demo {
                 app.set_pair_mode(PairMode::Rdt);
                 app.pick = None;
+            }
+        }
+        if let Some(path) = import {
+            match backup::read(&path) {
+                Ok(file) => {
+                    let (keyboard, kraken) = (file.keyboard.is_some(), file.kraken.is_some());
+                    app.backup_pending = Some(PendingImport { path, file, keyboard, kraken });
+                }
+                Err(e) => app.set_status(e, true),
             }
         }
         app
@@ -2122,13 +2133,32 @@ impl App {
         }
 
         let shown = self.shown_keyboard();
+        let gen2 = self.board == Board::Gen2;
         let Some(p) = self.backup_pending.as_mut() else { return };
         ui.separator();
         let name = p.path.file_name().map_or_else(|| p.path.display().to_string(), |n| n.to_string_lossy().into_owned());
         ui.label(theme::strong(format!("Import {name}")));
         let date = p.file.created.chars().take(10).collect::<String>();
-        theme::help(ui, format!("Exported by Kraken Control {} on {date}.", p.file.app_version));
-        if let Some(k) = &p.file.keyboard {
+        let official = p.file.keyboard.as_ref().is_some_and(backup::Keyboard::official);
+        if official {
+            theme::help(ui, format!("Exported by the official web driver on {date}."));
+        } else {
+            theme::help(ui, format!("Exported by Kraken Control {} on {date}.", p.file.app_version));
+        }
+        if let Some(k) = p.file.keyboard.as_ref().filter(|_| official) {
+            // The official file names no keyboard: any connected gen-2 board may take it
+            // (the import itself still checks that the layout matches).
+            let fits = gen2 && shown.is_some();
+            ui.add_enabled_ui(fits, |ui| {
+                ui.checkbox(&mut p.keyboard, "Key travel, keymap and advanced keys from the official driver");
+            });
+            if fits {
+                theme::help(ui, "Go into the current profile as unsaved changes: review the pages, then press Save to keyboard. Lighting, keyboard settings and macros are not in this file and stay as they are.");
+            } else {
+                p.keyboard = false;
+                theme::note(ui, format!("Connect a 2025 keyboard to import this {}.", k.name()));
+            }
+        } else if let Some(k) = &p.file.keyboard {
             let fits = shown.as_deref() == Some(k.name().as_str());
             ui.add_enabled_ui(fits, |ui| {
                 ui.checkbox(&mut p.keyboard, format!("Keyboard settings for the {}", k.name()));

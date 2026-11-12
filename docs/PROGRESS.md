@@ -137,3 +137,8 @@
 - User (2025 A75 Ultra): Live view works, looks slow. Cause: 300 ms poll (official interval) = ~3 pictures a second, shown as jumps.
 - Fix: `LED_POLL` 60 ms, fade from the on-screen colours to each new read over the measured read interval, repaint ~30 fps; worker logs the first read's duration once per run. Hardware untested.
 
+## 2026-11-12 (official import: dialog fix)
+- User tried a real official export (`TESTA asd.json`): file parsed, but the import dialog greyed out the keyboard part with "These are for the official driver export; the keyboard shown now is the A75 Ultra (2025)". Cause: `backup_card` compares `Keyboard::name()` with the shown keyboard; the `OFFICIAL_BOARD` exception was only in `import_backup`. Missed because the dialog path was not exercised (no way past the native file dialog under Xvfb).
+- Fix: `Keyboard::official()`; dialog offers official files on any connected gen-2 board, header "Exported by the official web driver", own checkbox / help text. New `--import=<file>` argument opens the dialog directly; used to verify dialog -> Import -> "Unsaved changes" in demo.
+- Still wanted: the user's JSON as a fixture (format so far confirmed only as far as "it parses").
+

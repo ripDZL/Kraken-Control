@@ -47,6 +47,12 @@ pub enum Keyboard {
 }
 
 impl Keyboard {
+    /// From a profile exported by the official gen-2 web driver: it names no
+    /// keyboard, so it is offered to whichever gen-2 board is connected.
+    pub fn official(&self) -> bool {
+        matches!(self, Keyboard::Gen2(g) if g.board == OFFICIAL_BOARD)
+    }
+
     pub fn name(&self) -> String {
         match self {
             Keyboard::Gen1(g) => g.model.name().to_string(),
