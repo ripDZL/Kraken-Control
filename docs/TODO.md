@@ -37,6 +37,7 @@
 - [ ] Hardware (A75 Ultra 2025): Lighting > Wave / Up and down waves / Fountain / Spin: Direction buttons do what they say (Fountain Outward / Inward is read from icon names); Live view card follows the keyboard, typing and saving still feel instant while it runs; log has no `live colours not readable`.
 - [x] Import of the official driver's profile export (2026-11-11, unit-tested against the format read from the bundle).
 - [ ] Real file check: export a profile in the official 2025 driver, Import from file in Kraken (2025 board connected) -> pages show the same travel / keymap / advanced keys; send the JSON if anything is refused or differs (worth adding as a test fixture).
+- [x] Live view works on hardware (user, 2026-11-12) but looked slow at the official 300 ms -> now 60 ms + fade between reads. Check: smooth enough? Log line `live colours read in N ms` (if N is well above 60 the read itself is the limit); typing / saving still instant, keyboard still responsive in games while the Lighting page is open.
 - [ ] Gen-2 advanced keys on FN layers.
 - [x] v0.8 (user OK 2026-11-08; `dd-proto::pattern` tested standalone 6/6 + clippy): Custom lighting Highlight groups (WASD/Arrows/F-keys/Numbers/Modifiers by factory HID code) + Pattern (direction; Gradient brush->2nd colour, Rainbow 5/6 wheel, Random) -> `set_key_colors` (one undo step, live write).
 - [ ] v0.8.1 (compiled since v0.10; hardware check pending): Stripes, Checker (brush + 2nd colour), palettes Sunset/Ocean/Forest/Fire/Vapor/Ice (3-stop blend along direction).

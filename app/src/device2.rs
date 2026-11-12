@@ -382,8 +382,14 @@ impl Worker {
     fn read_leds(&mut self) {
         let Some(s) = self.session.as_mut() else { return };
         s.quiet = true;
+        let start = std::time::Instant::now();
         let res = s.read_region(cmd::LED_READ, 0, gen2::LED_LEN);
         s.quiet = false;
+        // Once per run: how long a read takes decides how smooth the live view can be.
+        static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+        if res.is_ok() && !LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+            log::line(format!("gen2: live colours read in {} ms", start.elapsed().as_millis()));
+        }
         match res {
             Ok(data) => self.emit(Event::Leds(data)),
             Err(e) if is_disconnect(&e) => self.fail(e, "Live colours"),

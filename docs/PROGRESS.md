@@ -133,3 +133,7 @@
 - `backup::parse_official` (pure): travel -> `Gen2Key`, four layers, tables + advanced keymap entries rebuilt from `advancedKeys` in list order, DKS continuation values folded into spans; `OFFICIAL_BOARD` marker skips only the board-name check in `import_backup`; empty colours = keep. Test `official_export_is_converted` (synthetic file built from the field names in the bundle).
 - UI: help line on the back-up card (gen-2). Tests: dd-proto 48, app 17; clippy clean both configs. No real export file seen yet.
 
+## 2026-11-12 (live view speed)
+- User (2025 A75 Ultra): Live view works, looks slow. Cause: 300 ms poll (official interval) = ~3 pictures a second, shown as jumps.
+- Fix: `LED_POLL` 60 ms, fade from the on-screen colours to each new read over the measured read interval, repaint ~30 fps; worker logs the first read's duration once per run. Hardware untested.
+

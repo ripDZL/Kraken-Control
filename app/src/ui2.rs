@@ -40,6 +40,9 @@ struct MacroEdit {
     mods: egui::Modifiers,
 }
 
+/// Time between live colour reads (Lighting page). A read is 7 short requests.
+const LED_POLL: Duration = Duration::from_millis(60);
+
 /// Pause the official recorder puts between events unless real timing is kept.
 const MACRO_DELAY_MS: u16 = 50;
 
@@ -77,6 +80,11 @@ pub struct Gen2Panel {
     /// Live view (Lighting page, built-in effects): colours the keyboard shows now,
     /// when the last read was sent (None = none in flight) and whether the keyboard answers.
     leds: Vec<u8>,
+    /// What was on screen when `leds` arrived, when that was, and the time between
+    /// the last two reads: keys fade from one read to the next instead of jumping.
+    leds_prev: Vec<u8>,
+    leds_at: Instant,
+    led_period: Duration,
     led_pending: Option<Instant>,
     led_next: Instant,
     led_off: bool,
@@ -201,6 +209,9 @@ impl Gen2Panel {
             macros_sent: None,
             macro_edit: None,
             leds: Vec::new(),
+            leds_prev: Vec::new(),
+            leds_at: Instant::now(),
+            led_period: LED_POLL,
             led_pending: None,
             led_next: Instant::now(),
             led_off: false,
@@ -344,6 +355,7 @@ impl Gen2Panel {
         self.macros_sent = None;
         self.macro_edit = None;
         self.leds.clear();
+        self.leds_prev.clear();
         self.led_pending = None;
         self.led_off = false;
         self.knob = gen2::knob_slots(&s.factory[0]);
@@ -435,6 +447,11 @@ impl Gen2Panel {
                 Event::Leds(d) => {
                     self.led_pending = None;
                     self.led_off = d.is_empty();
+                    // Start the next fade from what is on screen now.
+                    let now = Instant::now();
+                    self.leds_prev = (0..self.leds.len() / 3).flat_map(|s| self.led_rgb(s, now).unwrap_or_default()).collect();
+                    self.led_period = now.duration_since(self.leds_at).clamp(Duration::from_millis(30), Duration::from_millis(400));
+                    self.leds_at = now;
                     self.leds = d;
                 }
                 Event::Busy(b) => self.busy = b,
@@ -484,7 +501,17 @@ impl Gen2Panel {
         self.tab == Tab::Lighting && !self.led_off && self.snap.is_some() && func::get(&self.func, func::LIGHT_EFFECT) != 0
     }
 
-    /// Asks for the live colours every 300 ms (official interval), one read at a time.
+    /// Live colour of matrix slot `s`: the last read, faded in from the one before.
+    fn led_rgb(&self, s: usize, now: Instant) -> Option<[u8; 3]> {
+        let new = self.leds.get(3 * s..3 * s + 3)?;
+        let Some(old) = self.leds_prev.get(3 * s..3 * s + 3) else { return Some([new[0], new[1], new[2]]) };
+        let t = (now.duration_since(self.leds_at).as_secs_f32() / self.led_period.as_secs_f32()).clamp(0.0, 1.0);
+        let mix = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * t).round() as u8;
+        Some([mix(old[0], new[0]), mix(old[1], new[1]), mix(old[2], new[2])])
+    }
+
+    /// Asks for the live colours again `LED_POLL` after the last request, one read
+    /// at a time (the official page waits 300 ms, which looks choppy).
     fn led_poll(&mut self, ctx: &egui::Context) {
         if self.demo {
             // No keyboard: a fixed rainbow by matrix slot stands in for the live colours.
@@ -498,9 +525,10 @@ impl Gen2Panel {
         if self.led_pending.is_none() && !self.busy && now >= self.led_next {
             self.dev.send(Cmd::ReadLeds);
             self.led_pending = Some(now);
-            self.led_next = now + Duration::from_millis(300);
+            self.led_next = now + LED_POLL;
         }
-        ctx.request_repaint_after(Duration::from_millis(100));
+        // ~30 frames a second while the fade runs.
+        ctx.request_repaint_after(Duration::from_millis(33));
     }
 
     fn macros_dirty(&self) -> bool {
@@ -1013,6 +1041,7 @@ impl Gen2Panel {
 
     fn keyboard(&mut self, ui: &mut egui::Ui) {
         let live_view = self.live_view();
+        let live_now = Instant::now();
         let unit = theme::key_unit(ui);
         let size = Vec2::new(16.25 * unit, 6.4 * unit);
         let (resp, painter) = ui.allocate_painter(size, Sense::click());
@@ -1046,7 +1075,7 @@ impl Gen2Panel {
             };
             let key_color = match (self.tab == Tab::Lighting, live_view) {
                 (true, false) => slot.and_then(|s| self.colors.get(s)).map(|c| Color32::from_rgb(c[0], c[1], c[2])),
-                (true, true) => slot.and_then(|s| self.leds.get(3 * s..3 * s + 3)).map(|c| Color32::from_rgb(c[0], c[1], c[2])),
+                (true, true) => slot.and_then(|s| self.led_rgb(s, live_now)).map(|c| Color32::from_rgb(c[0], c[1], c[2])),
                 _ => None,
             };
             let tag = slot.and_then(|s| self.advanced_tag(s));
