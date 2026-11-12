@@ -2337,9 +2337,8 @@ fn dks_editor(ui: &mut egui::Ui, dks: &mut Dks) {
                 });
                 if len != bind.spans[stage] {
                     bind.spans[stage] = len;
-                    for inner in stage + 1..(stage + len as usize).saturating_sub(1).min(4) {
-                        bind.spans[inner] = 0;
-                    }
+                    let end = (stage + len as usize).saturating_sub(1).min(4);
+                    bind.spans.iter_mut().take(end).skip(stage + 1).for_each(|s| *s = 0);
                     bind.spans = gen2::dks_normalize(bind.spans);
                 }
             }
