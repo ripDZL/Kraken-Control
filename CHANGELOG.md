@@ -4,6 +4,8 @@ Notable changes to Kraken Control. Versions follow [Semantic Versioning](https:/
 
 ## Unreleased
 
+## [0.13.0] - 2026-11-12
+
 - **Import from the official driver (A75 Ultra 2025):** Import from file also takes a profile exported by the official web driver: key travel, keymap and advanced keys, with the same checks as Kraken's own files.
 - **Lighting (A75 Ultra 2025):** Direction for Wave, Up and down waves, Fountain and Spin. A Live view under the lighting controls shows the colours the keys have right now while a built-in effect runs.
 - **Macros (A75 Ultra 2025):** Advanced keys › Macros. Record your typing or build a macro step by step (press / release, key, pause), then put it on a key. Up to 16 macros per profile, stored on the keyboard; included in export / import.

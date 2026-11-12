@@ -142,3 +142,7 @@
 - Fix: `Keyboard::official()`; dialog offers official files on any connected gen-2 board, header "Exported by the official web driver", own checkbox / help text. New `--import=<file>` argument opens the dialog directly; used to verify dialog -> Import -> "Unsaved changes" in demo.
 - Still wanted: the user's JSON as a fixture (format so far confirmed only as far as "it parses").
 
+## 2026-11-12 (0.13.0 prep)
+- User: official import and export / import work on the 2025 board. Memory creep reported, parked (see TODO).
+- `Cargo.toml` 0.13.0, CHANGELOG `[0.13.0] - 2026-11-12`. Tag not pushed (user).
+
