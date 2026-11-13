@@ -14,7 +14,7 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - `sendReport(0, 64 bytes)` → report ID 0; Windows buffer 65 bytes `[0, payload]`.
 - One command in flight (`commandQueue`), next input report = reply; official races 1.5 s and returns `[]` on timeout.
 - Reply byte 0 `AA` = OK, byte 1 = command echo (confirmed on hardware), data from byte 8.
-- Unsolicited: `A0` calibration (format: see "Key travel during calibration"), `A1 ?? idx` profile switched on keyboard, `A2` reset, `AA FA` lighting changed.
+- Unsolicited: `A0` key travel (debug bit or calibration; see "Live key travel"), `A1 ?? idx` profile switched on keyboard, `A2` reset, `AA FA` lighting changed.
 
 ## Framing (group 0x55)
 - Read: `55 cmd 00 sum len lo hi`, sum = (len+lo+hi)&FF, len ≤ 56.
@@ -34,7 +34,7 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 | A2 / A3 | R/W | 768·profile | DKS, 32 × 24 B |
 | A4 / A5 | R/W | 256·profile | MT/RS/SOCD, 32 × 6 B |
 | A6 / A7 | R/W | 128·profile | TGL, 32 × 3 B |
-| never | — | — | EE reset, 5F boot, 80–84 firmware, A8/A9 calibration, group-6 `0F FF` factory settings |
+| never | — | — | EE reset, 5F boot, 80–84 firmware, A8/A9 calibration, group-6 `0F FF` factory settings, 01/02 "fast model" (unused by official) |
 
 ## Key trigger (8 B)
 - `[0]` 0xA0 | switch type (0 Qian 4.00 mm, 1 BeiDou 3.60 mm for type 101)
@@ -91,11 +91,12 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - Import (L17712-17782 -> `setAllAdvancedKeys`, L12780-12817): writes the four layers, rebuilds the DKS / MT / TGL tables from the list in list order (a pair = two MT entries `[key1, key2]`, `[key2, key1]`), then sets the keymap entries: DKS `144 n 0`, MT `146 n time/10`, pair `kind n index2` and `kind n+1 index1`, TGL `145 n 0`; then travel.
 - Kraken: `backup::parse_official` builds the same tables / entries as a `backup::Gen2` (board = "official driver export"), which then goes through `Gen2Panel::import_backup` unchanged in its checks (only picker / factory actions, travel clamped, switch type and precision kept). Advanced entries in `userKeys` that the list doesn't cover get index 255 and fall back to factory. Macro keys fall back to factory (no macros in the file). Format taken from the code only — no real export file seen yet.
 
-## Key travel during calibration (read 2026-11-13, NOT used)
-- The only per-key travel the 2025 driver ever shows. Reports `A0 ...` arrive after `startCalibration` = `55 A8 00 00` (L711); `endCalibration` = `55 A9 00 00` (L714) stores the result. The reply queue skips `A0` reports (L290); a "calibration" listener (L2000-2007) feeds the calibration page (L19147-19158).
-- Report: `[1..4]` = keymap-style triple `[type, code1, code2]` naming the key (helper `K`, L1821); `[6..8]` = travel, u16 with byte 6 high (`F([e[7], e[6]])`, L481), probably 0.01 mm (switch max travel values in the same file are 400 / 360); `[10]` = per-key "check status" (calibration done marker).
-- No travel stream outside calibration found in any bundle file (no depth / travel / real-time read command; input-report handlers L285-296, L27614 only route A0/A1/A2/AA FA). Whether the keyboard sends A0 without A8 is unknown: a packet log with `<- A0` lines from normal use would show it.
-- Kraken does not send A8/A9 (safety rule): a calibration ended with keys not fully pressed may leave wrong travel limits until re-calibrated.
+## Live key travel (A0 reports, debug bit)
+- Official Performance tab: selecting it calls `setDebugModeKey(profile, 1)`, leaving it `setDebugModeKey(profile, 0)` (tab handler L27235-27237, L27352). Setter (L2366-2369): read func block, `[7] = [7] & 0xF7 | on << 3`, write it back. While the bit is set the keyboard sends `A0` input reports as keys move; the page's "Trigger Effect" bar shows the last one (`switchMaxTravel - keyTravel`, L19561). Confirmed by the user's screen recording of the official page (2026-11-13): bar follows a key press 0 → ~3.6 mm → 0 with calibration idle.
+- The same `A0` reports are also sent during calibration (`55 A8 00 00` start, L711; `55 A9 00 00` end stores the result, L714). Kraken never sends A8 / A9.
+- Report (payload without report ID): `[1..4]` = the key as its factory keymap entry `[type, code1, code2]` (official matches by key code, `K` L1821); `[6]` travel high byte, `[7]` low byte (`F([e[7], e[6]])`, L481), 0.01 mm, 0 = at rest; `[10]` calibration check status. The reply queue skips `A0` reports (L290); the "calibration" listener (L2000-2007, L19147-19158) consumes them.
+- `startFastModel` `55 01 00 00` / `endFastModel` `55 02 00 00` (L723-728) exist in the API but are never called; unknown purpose, not used.
+- Kraken: `func::DEBUG`, `gen2::parse_travel`, `gen2::travel_slot`; `Cmd::LiveDepth(on)` sets / clears the bit (read-modify-write + check) on the current profile and follows profile changes; travel reports are collected while reading (not packet-logged) and sent as `Event::Travel`; worker wakes every 10 ms while on. Cleared on: switch off, leaving the Performance page, other board shown, UI closed (`Handle::drop` waits up to 0.8 s), and on connect if a leftover bit is found (official page closed on its Performance tab leaves it set).
 
 ## Settings block (64 B)
 - `[1]` low nibble system mode (2 = mac) · `[4]` low = polling (1 8k, 2 4k, 3 2k, 4 1k), high = tick (0 off, 1 30, 2 60)
@@ -112,7 +113,7 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 
 ## Web-driver feature inventory (bundle `gen2-bundle/app_page-feab963f2440235f.js`, js-beautify 1.15.1 line refs)
 - Device API (L480-990, class `j`): getInfo 85[3], getBase 85[4], getFunc/setFunc 05/06 (64 B per profile), key matrix 07/08 R, 09 W, macros 0C R / 0D W (2048 B per slot), key colours 0A/0B, trigger A0/A1 (1024 B/profile, 8 B/key), DKS A2/A3 (768 B/profile, 24 B), MT A4/A5 (256 B... index*6), TGL A6/A7 (128 B), live LED colours DE (384 B = 128 x RGB, read-only, polled every 300 ms for the preview, L18957), profile select 0E.
-- Never used by Kraken: calibration A8/A9 (input reports 0xA0 = calibration stream), reset EE, boot mode 95[06...], ROM erase/write 81/83, firmware update.
+- Never used by Kraken: calibration A8/A9 (input reports 0xA0 also come with the debug bit, which Kraken uses for live depth), reset EE, boot mode 95[06...], ROM erase/write 81/83, firmware update.
 - Func-byte setters (L2346-2390): func[7] bit0 Berserk mode, bits1 stability (Adaptive Stable), bit3 debug mode key, bits5-7 debounce; func[4] low nibble polling, high nibble tick rate; func[1] system mode.
 - Live depth: none on gen-2 (the Test tab uses browser keydown/keyup, L20835).
 - Gaps vs Kraken (2026-11-11, after DKS / RS / OKS, macros, light direction, live view and official-export import): logo / side light blocks `[24..39]` (other models); light point (type 102).

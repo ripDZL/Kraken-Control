@@ -795,11 +795,16 @@ const DEPTH_FULL_MM: f32 = 3.3;
 /// pressed (teal once past its actuation point), with an amber line at the
 /// actuation point while the key is moving.
 pub fn depth_overlay(painter: &Painter, face: Rect, depth_mm: f32, ap_mm: f32) {
+    depth_overlay_to(painter, face, depth_mm, ap_mm, DEPTH_FULL_MM);
+}
+
+/// [`depth_overlay`] with the depth that fills the whole key face (switch travel).
+pub fn depth_overlay_to(painter: &Painter, face: Rect, depth_mm: f32, ap_mm: f32, full_mm: f32) {
     if depth_mm <= 0.0 {
         return;
     }
     let p = pal();
-    let y = |mm: f32| face.min.y + face.height() * (mm / DEPTH_FULL_MM).clamp(0.0, 1.0);
+    let y = |mm: f32| face.min.y + face.height() * (mm / full_mm.max(0.1)).clamp(0.0, 1.0);
     let on = depth_mm >= ap_mm;
     let fill = if on { p.accent.gamma_multiply(0.45) } else { p.muted.gamma_multiply(0.28) };
     let shade = Rect::from_min_max(face.min, egui::pos2(face.max.x, y(depth_mm)));

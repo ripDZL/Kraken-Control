@@ -88,6 +88,12 @@ pub struct Gen2Panel {
     led_pending: Option<Instant>,
     led_next: Instant,
     led_off: bool,
+    /// Live key depth (Performance page): switched on, sent to the worker, depth
+    /// per matrix slot in mm, and when the page was last drawn.
+    live_depth: bool,
+    depth_sent: bool,
+    depth: Vec<f32>,
+    body_at: Instant,
     /// Knob press / left / right matrix slots.
     knob: [Option<u8>; 3],
     /// Knob action selected for remapping (index into `knob`).
@@ -215,6 +221,10 @@ impl Gen2Panel {
             led_pending: None,
             led_next: Instant::now(),
             led_off: false,
+            live_depth: std::env::args().any(|a| a == "--live-depth"),
+            depth_sent: false,
+            depth: vec![0.0; gen2::KEYS],
+            body_at: Instant::now(),
             knob: [None; 3],
             knob_sel: None,
             draft: None,
@@ -382,6 +392,8 @@ impl Gen2Panel {
                 }
                 Event::Unsupported(msg) => self.set_status(msg, true),
                 Event::Disconnected(why) => {
+                    self.depth_sent = false;
+                    self.depth.fill(0.0);
                     self.connected = None;
                     self.snap = None;
                     self.busy = false;
@@ -442,6 +454,15 @@ impl Gen2Panel {
                     }
                     if let Some(s) = self.snap.as_mut() {
                         s.macros = back;
+                    }
+                }
+                Event::Travel(list) => {
+                    if let Some(main) = self.snap.as_ref().and_then(|s| s.factory.first()) {
+                        for (key, travel) in list {
+                            if let Some(slot) = gen2::travel_slot(main, key) {
+                                self.depth[slot] = f32::from(travel) / 100.0;
+                            }
+                        }
                     }
                 }
                 Event::Leds(d) => {
@@ -508,6 +529,36 @@ impl Gen2Panel {
         let t = (now.duration_since(self.leds_at).as_secs_f32() / self.led_period.as_secs_f32()).clamp(0.0, 1.0);
         let mix = |a: u8, b: u8| (f32::from(a) + (f32::from(b) - f32::from(a)) * t).round() as u8;
         Some([mix(old[0], new[0]), mix(old[1], new[1]), mix(old[2], new[2])])
+    }
+
+    /// Starts or stops live key depth on the worker to match the page. The gen-2
+    /// page not being drawn (other board shown) counts as leaving it.
+    fn sync_depth(&mut self, ctx: &egui::Context) {
+        let want = self.live_depth && self.tab == Tab::Performance && self.snap.is_some() && self.body_at.elapsed() < Duration::from_millis(500);
+        if self.demo {
+            self.demo_depth(want, ctx);
+            return;
+        }
+        if want != self.depth_sent {
+            self.dev.send(Cmd::LiveDepth(want));
+            self.depth_sent = want;
+            self.depth.fill(0.0);
+        }
+    }
+
+    /// Demo mode: W, A, S and D move up and down so the view can be checked without a keyboard.
+    fn demo_depth(&mut self, on: bool, ctx: &egui::Context) {
+        self.depth.fill(0.0);
+        if !on {
+            return;
+        }
+        let t = ctx.input(|i| i.time) as f32;
+        for (i, name) in ["W", "A", "S", "D"].iter().enumerate() {
+            let Some(slot) = self.layout.iter().position(|k| k.name == *name).and_then(|i| self.slots[i]) else { continue };
+            let phase = t * 1.3 + i as f32 * 1.7;
+            self.depth[slot as usize] = ((phase.sin() * 0.5 + 0.5) * 4.3 - 0.3).clamp(0.0, 4.0);
+        }
+        ctx.request_repaint_after(Duration::from_millis(33));
     }
 
     /// Asks for the live colours again `LED_POLL` after the last request, one read
@@ -721,6 +772,8 @@ impl Gen2Panel {
 
     /// Content of the current page; the host draws header, menu and the shared Settings cards.
     pub fn body(&mut self, ui: &mut egui::Ui) {
+        self.body_at = Instant::now();
+        self.sync_depth(ui.ctx());
         if self.snap.is_none() {
             if self.connected.is_some() {
                 theme::help(ui, "Reading keyboard…");
@@ -1089,6 +1142,10 @@ impl Gen2Panel {
             let top_left = rect.left_top() + Vec2::splat(pad);
             match self.tab {
                 Tab::Performance => {
+                    if let Some((s, t)) = slot.and_then(|s| self.triggers.get(s).map(|t| (s, t))).filter(|_| self.live_depth) {
+                        let full = gen2::SWITCHES.get(t.switch_type() as usize).map_or(400, |w| w.1) as f32 / 100.0;
+                        theme::depth_overlay_to(&painter, rect, self.depth.get(s).copied().unwrap_or(0.0), t.actuation_mm(), full);
+                    }
                     let name = fit_text(&painter, top_left, Align2::LEFT_TOP, &label, max_w, small, pal().key_legend);
                     if let Some(t) = slot.and_then(|s| self.triggers.get(s)) {
                         let ap = t.actuation_mm();
@@ -1253,6 +1310,13 @@ impl Gen2Panel {
     }
 
     fn performance(&mut self, ui: &mut egui::Ui) {
+        theme::switch_row(
+            ui,
+            &mut self.live_depth,
+            "Show live key depth",
+            "Press keys on your keyboard to see how far each one goes down. A key turns teal once it passes its actuation point (amber line).",
+        );
+        ui.separator();
         ui.horizontal(|ui| {
             ui.label("Select:");
             if ui.button("All").clicked() {

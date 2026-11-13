@@ -146,3 +146,11 @@
 - User: official import and export / import work on the 2025 board. Memory creep reported, parked (see TODO).
 - `Cargo.toml` 0.13.0, CHANGELOG `[0.13.0] - 2026-11-12`. Tag not pushed (user).
 
+## 2026-11-13 (gen-2 live key depth)
+- User: no Turbo toggle -> Turbo is gen-1 only; CHANGELOG wording fixed (8a01fe9).
+- User asked for live actuation on the 2025 board, sent a screen recording of the official Performance page showing it. Frame diff: only the "Trigger Effect" bar moves. Traced: bar <- `keyTravel` <- `A0` listener; Performance tab handler -> `setDebugModeKey` = func[7] bit 3. Earlier "no travel stream" conclusion was wrong (only searched for depth / travel commands, not func bits).
+- dd-proto: `func::DEBUG`, `TravelReport`, `parse_travel`, `travel_slot`; test `travel_report_golden`.
+- device2: `Cmd::LiveDepth`, `Event::Travel`, `Session::set_debug` (RMW + check), `travel` buffer in `read_payload` (not packet-logged), 10 ms wake, `follow_profile`, leftover-bit clear on connect, `Handle::drop` waits for cleanup.
+- ui2: Performance switch "Show live key depth", `sync_depth` / `demo_depth`, shading via `theme::depth_overlay_to` (new; gen-1 `depth_overlay` delegates). `--live-depth` arg for demo.
+- Verified: demo screenshot (WASD shading + amber lines); tests dd-proto 49, app 17; clippy both configs. Hardware untested.
+

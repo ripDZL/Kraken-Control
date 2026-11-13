@@ -69,6 +69,9 @@ pub enum Cmd {
     SaveMacros { profile: u8, data: Vec<u8> },
     /// Reads the colours the keyboard is showing (live view on the Lighting page).
     ReadLeds,
+    /// Live key depth on / off: sets or clears the keyboard's debug bit
+    /// (`func::DEBUG`) on the current profile, as the official Performance tab does.
+    LiveDepth(bool),
 }
 
 pub enum Event {
@@ -85,6 +88,8 @@ pub enum Event {
     Macros(Vec<u8>),
     /// Live colours (128 × RGB by matrix slot); empty = the keyboard didn't answer.
     Leds(Vec<u8>),
+    /// Key travel reports received since the last event (key, 0.01 mm).
+    Travel(Vec<(Action, u16)>),
     Busy(bool),
     Done(String),
     Error(String),
@@ -93,6 +98,17 @@ pub enum Event {
 pub struct Handle {
     tx: Sender<Cmd>,
     pub rx: Receiver<Event>,
+    /// Signalled by the worker when it has finished (after clearing the debug bit).
+    done: Receiver<()>,
+}
+
+impl Drop for Handle {
+    /// Closing the channel stops the worker; give it a moment to switch live
+    /// key depth off so the keyboard isn't left streaming travel reports.
+    fn drop(&mut self) {
+        drop(std::mem::replace(&mut self.tx, mpsc::channel().0));
+        let _ = self.done.recv_timeout(Duration::from_millis(800));
+    }
 }
 
 impl Handle {
@@ -104,11 +120,15 @@ impl Handle {
 pub fn spawn(on_event: impl Fn() + Send + 'static) -> Handle {
     let (tx, cmd_rx) = mpsc::channel();
     let (ev_tx, rx) = mpsc::channel();
+    let (done_tx, done) = mpsc::channel();
     thread::Builder::new()
         .name("device-gen2".into())
-        .spawn(move || Worker { tx: ev_tx, notify: Box::new(on_event), session: None, reported_unsupported: false }.run(cmd_rx))
+        .spawn(move || {
+            Worker { tx: ev_tx, notify: Box::new(on_event), session: None, reported_unsupported: false, debug_profile: None }.run(cmd_rx);
+            let _ = done_tx.send(());
+        })
         .expect("spawn gen2 thread");
-    Handle { tx, rx }
+    Handle { tx, rx, done }
 }
 
 const REPLY_TIMEOUT_MS: u32 = 1500; // official races each reply against 1.5 s
@@ -124,6 +144,8 @@ struct Session {
     /// Profile switch announced by the keyboard (`A1 .. idx`).
     switched_to: Option<u8>,
     warned_echo: bool,
+    /// Live key depth: travel reports collected while reading (None = off).
+    travel: Option<Vec<(Action, u16)>>,
 }
 
 impl Session {
@@ -144,14 +166,22 @@ impl Session {
                 continue;
             }
             let p = r[1..].to_vec();
-            self.log("<-", &p);
+            // Travel reports come with every key movement: keep them out of the packet log.
+            if p[0] != notify::CALIBRATION || self.travel.is_none() {
+                self.log("<-", &p);
+            }
             match p[0] {
                 notify::PROFILE => {
                     if let Some(&i) = p.get(2) {
                         self.switched_to = Some(i);
                     }
                 }
-                notify::CALIBRATION | notify::RESET => {}
+                notify::CALIBRATION => {
+                    if let (Some(buf), Some(t)) = (self.travel.as_mut(), gen2::parse_travel(&p)) {
+                        buf.push((t.key, t.travel));
+                    }
+                }
+                notify::RESET => {}
                 gen2::REPLY_OK if p[1] == 0xFA => {} // lighting changed on the keyboard
                 _ => return Ok(Some(p)),
             }
@@ -215,6 +245,22 @@ impl Session {
         self.read_region(cmd::FUNC_READ, gen2::func_base(profile), gen2::FUNC_LEN)
     }
 
+    /// Sets or clears the debug bit of `profile` (read-modify-write, like the
+    /// official `setDebugModeKey`), then checks it. Returns whether it changed.
+    fn set_debug(&mut self, profile: u8, on: bool) -> io::Result<bool> {
+        let mut block = self.func(profile)?;
+        if func::get(&block, func::DEBUG) == on as u8 {
+            return Ok(false);
+        }
+        func::set(&mut block, func::DEBUG, on as u8);
+        self.write_region(cmd::FUNC_WRITE, gen2::func_base(profile), &block)?;
+        let back = self.func(profile)?;
+        if func::get(&back, func::DEBUG) != on as u8 {
+            return Err(io::Error::new(io::ErrorKind::InvalidData, "debug bit read back differently"));
+        }
+        Ok(true)
+    }
+
     fn snapshot(&mut self) -> io::Result<Snapshot> {
         let fw = gen2::parse_fw(&self.request(&gen2::info())?).unwrap_or_default();
         self.profile = self.profile()?;
@@ -259,6 +305,8 @@ struct Worker {
     notify: Box<dyn Fn() + Send>,
     session: Option<Session>,
     reported_unsupported: bool,
+    /// Profile whose debug bit Kraken set for live key depth.
+    debug_profile: Option<u8>,
 }
 
 impl Worker {
@@ -276,7 +324,10 @@ impl Worker {
                 self.locked(Self::connect);
                 last_io = Instant::now();
             }
-            match rx.recv_timeout(Duration::from_millis(250)) {
+            // Live key depth: wake often to pick up travel reports.
+            let live = self.session.as_ref().is_some_and(|s| s.travel.is_some());
+            let wait = Duration::from_millis(if live { 10 } else { 250 });
+            match rx.recv_timeout(wait) {
                 Ok(c) => {
                     if !self.locked(|w| w.handle(c)) {
                         self.emit(Event::Error("keyboard busy (another Kraken Control process is using it)".into()));
@@ -287,10 +338,57 @@ impl Worker {
                     if self.session.is_some() && last_io.elapsed() >= IDLE_PING {
                         last_io = Instant::now();
                         self.locked(Self::ping);
+                    } else if live {
+                        self.locked(|_| {}); // `locked` drains, which collects travel reports
                     }
                 }
-                Err(RecvTimeoutError::Disconnected) => return,
+                Err(RecvTimeoutError::Disconnected) => {
+                    // UI closed: don't leave the keyboard streaming travel reports.
+                    self.locked(|w| w.set_live_depth(false));
+                    return;
+                }
             }
+            if let Some(buf) = self.session.as_mut().and_then(|s| s.travel.as_mut()).filter(|b| !b.is_empty()) {
+                let list = std::mem::take(buf);
+                self.emit(Event::Travel(list));
+            }
+        }
+    }
+
+    /// Profile changed (on the keyboard or from the UI) while live key depth is
+    /// on: move the debug bit to the new profile.
+    fn follow_profile(&mut self) {
+        let moved = self.session.as_ref().is_some_and(|s| s.travel.is_some() && self.debug_profile != Some(s.profile));
+        if moved {
+            self.set_live_depth(true);
+        }
+    }
+
+    /// Live key depth on / off. Errors are reported; the stream simply stays off.
+    fn set_live_depth(&mut self, on: bool) {
+        let Some(s) = self.session.as_mut() else {
+            self.debug_profile = None;
+            return;
+        };
+        let was = s.travel.is_some();
+        let want = on.then_some(s.profile);
+        let mut res = Ok(());
+        if self.debug_profile != want {
+            if let Some(p) = self.debug_profile.take() {
+                res = s.set_debug(p, false).map(|_| ());
+            }
+            if let (Some(p), Ok(())) = (want, &res) {
+                res = s.set_debug(p, true).map(|_| ());
+                if res.is_ok() {
+                    self.debug_profile = Some(p);
+                }
+            }
+        }
+        s.travel = (on && res.is_ok()).then(Vec::new);
+        match res {
+            Ok(()) if was != on => log::line(if on { "gen2: live key depth on" } else { "gen2: live key depth off" }),
+            Ok(()) => {}
+            Err(e) => self.fail(e, "Live key depth"),
         }
     }
 
@@ -320,7 +418,7 @@ impl Worker {
                     continue;
                 }
             };
-            let mut s = Session { dev, name: board.name, profile: 0, quiet: false, switched_to: None, warned_echo: false };
+            let mut s = Session { dev, name: board.name, profile: 0, quiet: false, switched_to: None, warned_echo: false, travel: None };
             if s.drain().is_err() {
                 continue;
             }
@@ -340,6 +438,13 @@ impl Worker {
                             log::line(format!("gen2: public device type {t}"));
                         }
                     }
+                    // A debug bit left on (Kraken or the official page closed during live
+                    // key depth) keeps the keyboard sending travel reports: clear it.
+                    if let Ok(p) = s.profile() {
+                        if let Ok(true) = s.set_debug(p, false) {
+                            log::line(format!("gen2: cleared a leftover debug bit on profile {}", p + 1));
+                        }
+                    }
                     self.session = Some(s);
                     self.emit(Event::Connected { name: board.name, pid: info.pid });
                     self.refresh();
@@ -353,7 +458,10 @@ impl Worker {
     fn refresh(&mut self) {
         let res = self.session.as_mut().map(Session::snapshot);
         match res {
-            Some(Ok(snap)) => self.emit(Event::Snapshot(Box::new(snap))),
+            Some(Ok(snap)) => {
+                self.follow_profile();
+                self.emit(Event::Snapshot(Box::new(snap)))
+            }
             Some(Err(e)) => self.fail(e, "Read failed"),
             None => {}
         }
@@ -407,6 +515,7 @@ impl Worker {
         if is_disconnect(&e) {
             log::line(format!("gen2: disconnected: {e}"));
             self.session = None;
+            self.debug_profile = None;
             self.emit(Event::Disconnected(e.to_string()));
         } else {
             log::line(format!("gen2: {what}: {e}"));
@@ -415,6 +524,10 @@ impl Worker {
     }
 
     fn handle(&mut self, c: Cmd) {
+        if let Cmd::LiveDepth(on) = c {
+            self.set_live_depth(on);
+            return;
+        }
         if self.session.is_none() {
             self.emit(Event::Error("No gen-2 keyboard connected".into()));
             return;
@@ -425,6 +538,7 @@ impl Worker {
         }
         self.emit(Event::Busy(true));
         let res = self.run_cmd(c);
+        self.follow_profile();
         self.emit(Event::Busy(false));
         match res {
             Ok(msg) => {
@@ -438,7 +552,7 @@ impl Worker {
     fn run_cmd(&mut self, c: Cmd) -> io::Result<String> {
         let s = self.session.as_mut().expect("checked");
         match c {
-            Cmd::ReadLeds => Ok(String::new()), // handled in `handle` (no status, no busy state)
+            Cmd::ReadLeds | Cmd::LiveDepth(_) => Ok(String::new()), // handled in `handle` (no status, no busy state)
             Cmd::Refresh => {
                 let snap = s.snapshot()?;
                 self.emit(Event::Snapshot(Box::new(snap)));

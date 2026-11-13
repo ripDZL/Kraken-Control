@@ -80,6 +80,7 @@ product ID.
 **A75 Ultra (2025)**
 
 - Rapid Trigger off / on / continuous, top and bottom dead zones.
+- Live key depth: watch each key go down as you press it, against its actuation point.
 - Four layers (Main, FN1–FN3) and the knob (press, turn left, turn right).
 - Advanced keys: SOCD pairs with priority, Rappy Snappy, One Key Switch,
   Mod Tap, Toggle and DKS (up to four actions at different depths of one

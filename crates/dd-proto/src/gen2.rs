@@ -1029,6 +1029,10 @@ pub mod func {
     pub const LOCK_ALT_F4: Field = (6, 0x04, 2);
     /// "Adaptive Stable" (`berserkMode`).
     pub const ADAPTIVE: Field = (7, 0x01, 0);
+    /// "Debug mode" (`setDebugModeKey`): while set, the keyboard reports key
+    /// travel as `A0` input reports. The official page sets it on its
+    /// Performance tab and clears it when leaving.
+    pub const DEBUG: Field = (7, 0x08, 3);
     /// 0 low, 1 medium, 2 high.
     pub const DEBOUNCE: Field = (7, 0xE0, 5);
     pub const LIGHT_EFFECT: Field = (8, 0xFF, 0);
@@ -1087,6 +1091,35 @@ pub const EFFECTS: &[&str] = &[
 /// Effects without a colour choice (K75 `color: false`).
 pub fn effect_has_color(effect: u8) -> bool {
     !matches!(effect, 0 | 1 | 5)
+}
+
+/// One key-travel report (`A0`, sent while `func::DEBUG` is set, or during calibration).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct TravelReport {
+    /// The key, as its factory keymap entry.
+    pub key: Action,
+    /// How far the key is pressed, 0.01 mm (0 = at rest).
+    pub travel: u16,
+    /// Calibration check status (not used outside calibration).
+    pub status: u8,
+}
+
+/// Parses an `A0` report (payload without report ID): `[1..4]` key, `[6]` travel
+/// high byte, `[7]` low byte, `[10]` status (official listener, L19147-19150).
+pub fn parse_travel(p: &[u8]) -> Option<TravelReport> {
+    if p.len() < 11 || p[0] != notify::CALIBRATION {
+        return None;
+    }
+    Some(TravelReport { key: Action::from_bytes(&p[1..4]), travel: u16::from_be_bytes([p[6], p[7]]), status: p[10] })
+}
+
+/// Matrix slot a travel report is about: first slot of the factory Main layer
+/// with the same entry (the official page matches the key code the same way).
+pub fn travel_slot(factory_main: &[Action], key: Action) -> Option<usize> {
+    if key.kind == 0 {
+        return None;
+    }
+    factory_main.iter().take(KEYS).position(|a| *a == key)
 }
 
 /// Direction choices of an effect as `(value of func [11], name)`, in the
@@ -1398,6 +1431,38 @@ mod tests {
         assert_eq!(reads.len(), 7);
         assert_eq!(reads[0][..7], [GROUP, 0xDE, 0, 56, 56, 0, 0]);
         assert_eq!(reads[6][..7], [GROUP, 0xDE, 0, (48 + 0x50 + 1) as u8, 48, 0x50, 1]);
+    }
+
+    #[test]
+    fn travel_report_golden() {
+        // W (HID 0x1A) pressed 2.37 mm: A0 10 00 1A .. .. 00 ED .. .. 01
+        let mut p = [0u8; 63];
+        p[..11].copy_from_slice(&[0xA0, 16, 0, 0x1A, 0, 0, 0x00, 0xED, 0, 0, 1]);
+        let r = parse_travel(&p).unwrap();
+        assert_eq!(r, TravelReport { key: Action { kind: 16, code1: 0, code2: 0x1A }, travel: 237, status: 1 });
+        // Byte 6 is the high byte.
+        p[6] = 0x01;
+        assert_eq!(parse_travel(&p).unwrap().travel, 0x1ED);
+        // Other reports, and short ones, are not travel.
+        p[0] = 0xAA;
+        assert!(parse_travel(&p).is_none());
+        assert!(parse_travel(&[0xA0, 16, 0]).is_none());
+        // Slot lookup by factory entry; empty key never matches.
+        let w = Action { kind: 16, code1: 0, code2: 0x1A };
+        let mut main = vec![Action::default(); KEYS];
+        main[17] = w;
+        main[40] = w;
+        assert_eq!(travel_slot(&main, w), Some(17));
+        assert_eq!(travel_slot(&main, Action::default()), None);
+        assert_eq!(travel_slot(&main, Action { kind: 16, code1: 0, code2: 4 }), None);
+        // Debug bit: byte 7 bit 3, next to Adaptive Stable and debounce.
+        let mut block = [0u8; 64];
+        block[7] = 0b0100_0001;
+        func::set(&mut block, func::DEBUG, 1);
+        assert_eq!(block[7], 0b0100_1001);
+        assert_eq!(func::get(&block, func::DEBUG), 1);
+        func::set(&mut block, func::DEBUG, 0);
+        assert_eq!(block[7], 0b0100_0001);
     }
 
     #[test]

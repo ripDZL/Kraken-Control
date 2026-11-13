@@ -4,6 +4,8 @@ Notable changes to Kraken Control. Versions follow [Semantic Versioning](https:/
 
 ## Unreleased
 
+- **Live key depth (A75 Ultra 2025):** Performance › Show live key depth shades each key as you press it and marks its actuation point, as the official driver's Performance tab does.
+
 ## [0.13.0] - 2026-11-12
 
 - **Import from the official driver (A75 Ultra 2025):** Import from file also takes a profile exported by the official web driver: key travel, keymap and advanced keys, with the same checks as Kraken's own files.
