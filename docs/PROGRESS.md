@@ -160,3 +160,8 @@
 - ui2: `LAYERS` shared; `base_action_in(layer, slot)` (layer's own plain action, else factory Main); `advanced_tag` + Advanced keycap labels follow `self.layer`; layer selector on Advanced (locked during a draft; DKS Edit jumps to the entry's layer); list = `find_advanced` per layer with layer column; create / remove / macro bind on `self.layer`; SOCD priority reset only if no SOCD left on that key in any layer; macro "on keys" names FN-layer keys.
 - Verified: demo XTest (FN1 -> Toggle -> J -> Create: J tagged TGL on FN1 only, Keymap + Advanced marked unsaved). Tests / clippy clean.
 
+## 2026-11-13 (macro names, local branch `dev`)
+- `store::MacroName { board, profile, id, name }`, `macro_name` / `set_macro_name` (trim, max 32 chars, empty removes), `Store.macro_names`; test `store::tests::macro_names`.
+- `Gen2Panel::body(ui, names) -> bool` (ui.rs persists on change); `macros_card` name column, titles "M3 Copy" in status lines; `MacroEdit.name` text field; name-only Apply = "renamed", no keyboard write; Delete removes the name. Back-up `Kraken.macro_names` (serde default), merged on import.
+- Verified: demo XTest (editor name "Copy" -> Apply -> list column + state.json entry). Tests / clippy clean.
+

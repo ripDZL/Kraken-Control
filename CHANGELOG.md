@@ -4,6 +4,8 @@ Notable changes to Kraken Control. Versions follow [Semantic Versioning](https:/
 
 ## Unreleased
 
+- **Macro names (A75 Ultra 2025):** give macros a name in the macro editor. Names are kept on this PC (the keyboard stores macros without names) and are included in Kraken's back-up file.
+
 - **Advanced keys and macros on FN layers (A75 Ultra 2025):** Advanced keys has a Main / FN1 / FN2 / FN3 selector; new advanced keys and macro keys go on the layer shown, like the official driver. The list shows every layer.
 
 - **Live key depth (A75 Ultra 2025):** Performance › Show live key depth shades each key as you press it and marks its actuation point, as the official driver's Performance tab does.

@@ -124,6 +124,9 @@ pub struct Kraken {
     pub profiles: Vec<Profile>,
     #[serde(default)]
     pub agent: AgentConfig,
+    /// Gen-2 macro names.
+    #[serde(default)]
+    pub macro_names: Vec<crate::store::MacroName>,
 }
 
 impl Kraken {

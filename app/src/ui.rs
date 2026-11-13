@@ -2013,8 +2013,9 @@ impl App {
         } else {
             theme::page_header(ui, page.title(), blurb);
         }
+        let mut names_changed = false;
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
-            self.gen2.body(ui);
+            names_changed = self.gen2.body(ui, &mut self.store.macro_names);
             if page == Tab::Profiles {
                 theme::card(ui, |ui| self.backup_card(ui));
             }
@@ -2022,6 +2023,9 @@ impl App {
                 self.common_settings(ui);
             }
         });
+        if names_changed {
+            self.persist();
+        }
     }
 }
 
@@ -2243,6 +2247,7 @@ impl App {
             light_presets2: self.store.light_presets2.clone(),
             profiles: self.store.profiles.clone(),
             agent: self.agent_cfg.clone(),
+            macro_names: self.store.macro_names.clone(),
         };
         let what = if keyboard.is_some() { "keyboard and Kraken settings" } else { "Kraken settings (no keyboard connected)" };
         let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
@@ -2340,6 +2345,9 @@ impl App {
                 Some(q) => *q = p,
                 None => self.store.light_presets.push(p),
             }
+        }
+        for m in k.macro_names {
+            store::set_macro_name(&mut self.store.macro_names, &m.board, m.profile, m.id, &m.name);
         }
         for p in k.light_presets2 {
             match self.store.light_presets2.iter_mut().find(|q| q.board == p.board && q.name == p.name) {

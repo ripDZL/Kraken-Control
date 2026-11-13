@@ -10,7 +10,7 @@ use eframe::egui::{self, Align2, Color32, FontId, Pos2, Rect, Sense, Stroke, Str
 
 use crate::device2::{self, Cmd, Event, Snapshot, Table};
 use crate::backup;
-use crate::store::LightPreset2;
+use crate::store::{self, LightPreset2};
 use crate::theme::{self, pal, Cap, Page, PresetAction};
 
 /// Pages of the gen-2 UI (shared list, see `theme::Page`).
@@ -32,6 +32,8 @@ enum Draft {
 /// Macro being recorded / edited (Advanced keys > Macros).
 struct MacroEdit {
     id: usize,
+    /// Name kept by Kraken (not on the keyboard).
+    name: String,
     events: Vec<MacroEvent>,
     recording: bool,
     /// Record the real pauses between keys (else 50 ms each, the official default).
@@ -331,7 +333,7 @@ impl Gen2Panel {
             Some("rs") => Some(Draft::Pair { kind: PairKind::Rs, keys: [Some(q), Some(e)], priority: 0 }),
             Some("oks") => Some(Draft::Pair { kind: PairKind::Oks, keys: [Some(q), None], priority: 0 }),
             Some("macro") => {
-                self.macro_edit = Some(MacroEdit { id: 0, events: self.macros[0].clone(), recording: false, timed: false, last_event: None, mods: egui::Modifiers::NONE });
+                self.macro_edit = Some(MacroEdit { id: 0, name: "Copy".into(), events: self.macros[0].clone(), recording: false, timed: false, last_event: None, mods: egui::Modifiers::NONE });
                 None
             }
             _ => None,
@@ -772,8 +774,10 @@ impl Gen2Panel {
     }
 
     /// Content of the current page; the host draws header, menu and the shared Settings cards.
-    pub fn body(&mut self, ui: &mut egui::Ui) {
+    /// Draws the current page. Returns whether `names` (macro names) changed.
+    pub fn body(&mut self, ui: &mut egui::Ui, names: &mut Vec<store::MacroName>) -> bool {
         self.body_at = Instant::now();
+        let mut names_changed = false;
         self.sync_depth(ui.ctx());
         if self.snap.is_none() {
             if self.connected.is_some() {
@@ -781,7 +785,7 @@ impl Gen2Panel {
             } else if self.tab != Tab::Settings {
                 theme::no_keyboard(ui);
             }
-            return;
+            return false;
         }
         let custom_light = func::get(&self.func, func::LIGHT_EFFECT) == 0;
         let live_view = self.live_view();
@@ -800,7 +804,7 @@ impl Gen2Panel {
             Tab::Keymap => theme::card(ui, |ui| self.keymap_editor(ui)),
             Tab::Advanced => {
                 theme::card(ui, |ui| self.advanced(ui));
-                theme::card(ui, |ui| self.macros_card(ui));
+                theme::card(ui, |ui| names_changed = self.macros_card(ui, names));
             }
             Tab::Lighting => {
                 theme::card(ui, |ui| self.lighting(ui));
@@ -822,6 +826,7 @@ impl Gen2Panel {
             }),
         }
         self.live_lighting(ui.ctx());
+        names_changed
     }
 
     fn light_fields(&self) -> Vec<u8> {
@@ -1816,15 +1821,18 @@ impl Gen2Panel {
     }
 
     /// Macros: list, recorder / editor, and putting a macro on a key.
-    fn macros_card(&mut self, ui: &mut egui::Ui) {
+    /// Macros card. Returns whether a macro name changed.
+    fn macros_card(&mut self, ui: &mut egui::Ui, names: &mut Vec<store::MacroName>) -> bool {
         theme::section(ui, "Macros");
         if self.macros.is_empty() {
             theme::help(ui, "This keyboard didn't answer when asked for its macros, so they are switched off here.");
-            return;
+            return false;
         }
+        let (board, profile) = self.snap.as_ref().map_or((String::new(), 0), |s| (s.name.to_string(), s.profile));
+        let mut names_changed = false;
         let total: usize = self.macros.iter().map(Vec::len).sum();
         let (mut edit, mut bind, mut unbind, mut delete) = (None, None, None, None);
-        egui::Grid::new("macros").num_columns(6).spacing([14.0, 6.0]).striped(true).show(ui, |ui| {
+        egui::Grid::new("macros").num_columns(7).spacing([14.0, 6.0]).striped(true).show(ui, |ui| {
             for (id, events) in self.macros.iter().enumerate().filter(|(_, e)| !e.is_empty()) {
                 let keys: Vec<String> = self
                     .keymap
@@ -1835,6 +1843,7 @@ impl Gen2Panel {
                     .map(|(layer, slot, _)| if layer == 0 { self.slot_name(slot as u8) } else { format!("{} {}", LAYERS[layer], self.slot_name(slot as u8)) })
                     .collect();
                 ui.strong(format!("M{}", id + 1));
+                ui.label(store::macro_name(names, &board, profile, id as u8).unwrap_or_default());
                 ui.label(macro_summary(events));
                 ui.label(if keys.is_empty() { "not on a key".to_string() } else { format!("on {}", keys.join(", ")) });
                 if ui.small_button("Edit").clicked() {
@@ -1859,27 +1868,35 @@ impl Gen2Panel {
         if ui.add_enabled(free_id.is_some() && self.macro_edit.is_none(), egui::Button::new("New macro")).clicked() {
             edit = free_id;
         }
+        // "M3 Copy" / "M3".
+        let title = |names: &[store::MacroName], id: usize| match store::macro_name(names, &board, profile, id as u8) {
+            Some(n) => format!("M{} {n}", id + 1),
+            None => format!("M{}", id + 1),
+        };
         if let Some(id) = edit {
-            self.macro_edit = Some(MacroEdit { id, events: self.macros[id].clone(), recording: false, timed: false, last_event: None, mods: egui::Modifiers::NONE });
+            let name = store::macro_name(names, &board, profile, id as u8).unwrap_or_default().to_string();
+            self.macro_edit = Some(MacroEdit { id, name, events: self.macros[id].clone(), recording: false, timed: false, last_event: None, mods: egui::Modifiers::NONE });
         }
         if let Some(id) = bind {
             self.draft = Some(Draft::MacroBind { id });
-            self.set_status(format!("Click the key that should play M{}", id + 1), false);
+            self.set_status(format!("Click the key that should play {}", title(names, id)), false);
         }
         if let Some(id) = unbind.or(delete) {
             self.macro_unbind(id);
         }
         if let Some(id) = delete {
+            let what = title(names, id);
             self.macros[id].clear();
+            names_changed |= store::set_macro_name(names, &board, profile, id as u8, "");
             if self.macro_edit.as_ref().is_some_and(|e| e.id == id) {
                 self.macro_edit = None;
             }
-            self.set_status(format!("M{} deleted — Save to keyboard to apply", id + 1), false);
+            self.set_status(format!("{what} deleted — Save to keyboard to apply"), false);
         }
 
         let Some(mut e) = self.macro_edit.take() else {
-            theme::help(ui, "A macro is a list of key presses the keyboard plays back when you press the key it is on. Macros belong to the profile.");
-            return;
+            theme::help(ui, "A macro is a list of key presses the keyboard plays back when you press the key it is on. Macros belong to the profile; their names are kept on this PC.");
+            return names_changed;
         };
         ui.add_space(6.0);
         ui.separator();
@@ -1890,12 +1907,20 @@ impl Gen2Panel {
                 if let Some(last) = e.events.last_mut() {
                     last.delay_ms = 0;
                 }
-                self.macros[e.id] = e.events;
-                self.set_status(format!("M{} updated — Save to keyboard to apply", e.id + 1), false);
+                names_changed |= store::set_macro_name(names, &board, profile, e.id as u8, &e.name);
+                let what = title(names, e.id);
+                // A name-only change needs no keyboard write.
+                if self.macros[e.id] != e.events {
+                    self.macros[e.id] = e.events;
+                    self.set_status(format!("{what} updated — Save to keyboard to apply"), false);
+                } else {
+                    self.set_status(format!("{what} renamed"), false);
+                }
             }
             Some(false) => {}
             None => self.macro_edit = Some(e),
         }
+        names_changed
     }
 
     /// Lighting tab; any change to the effect fields is written live.
@@ -2277,7 +2302,10 @@ fn macro_record(ui: &egui::Ui, e: &mut MacroEdit, room: usize) {
 
 /// Macro editor. Returns `Some(true)` on Apply, `Some(false)` on Cancel.
 fn macro_editor(ui: &mut egui::Ui, e: &mut MacroEdit, room: usize) -> Option<bool> {
-    ui.label(format!("Macro M{}", e.id + 1));
+    ui.horizontal(|ui| {
+        ui.label(format!("Macro M{}", e.id + 1));
+        ui.add(egui::TextEdit::singleline(&mut e.name).hint_text("name (optional)").char_limit(store::MACRO_NAME_MAX).desired_width(220.0));
+    });
     ui.horizontal(|ui| {
         if ui.button(if e.recording { "Stop recording" } else { "Record" }).clicked() {
             e.recording = !e.recording;

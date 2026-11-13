@@ -72,7 +72,8 @@
 - [ ] Hardware (A75 Ultra 2025): DKS create / edit / remove -> log shows `Saved Dks table (verified by read-back)` and the key behaves as set; DKS key made in the official driver reads back the same spans; RS pair (does it work with travel left as is? official writes 1.50 / 0.10 / 0.10 mm to both keys); OKS pair.
 - [x] Gen-2: macros (Advanced keys > Macros: record / edit / put on a key; 2026-11-11, demo-tested).
 - [ ] Hardware (A75 Ultra 2025): log line at connect (no `macro block not readable`); record a macro, Save -> `Saved macros (verified by read-back)`, key plays it; Reload keeps it on the same M number; macro made in the official driver shows up; Win / right-hand modifiers picked by hand play correctly.
-- [ ] Macros: names, mouse steps, repeat count (official never writes anything but 1), macros on FN layers (bind is Main layer only).
+- [x] Macro names (2026-11-13, local `dev`): `state.json` `macro_names` per board / profile / id, editor name field, list column, in back-up Kraken part. FN-layer binds done too.
+- [ ] Macros: mouse steps, repeat count (official never writes anything but 1).
 - [ ] Gen-2: light direction, light position, sleep time, live LED preview (DE).
 - [ ] Gen-2: import the official driver's config export.
 

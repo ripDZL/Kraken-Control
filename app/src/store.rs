@@ -100,6 +100,45 @@ pub struct LightPreset2 {
     pub colors: Vec<[u8; 3]>,
 }
 
+/// Name of a gen-2 macro. The keyboard stores macros without names (the official
+/// driver keeps names in the browser), so Kraken keeps them here.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MacroName {
+    /// Keyboard name, e.g. "A75 Ultra (2025)".
+    pub board: String,
+    pub profile: u8,
+    pub id: u8,
+    pub name: String,
+}
+
+/// Longest macro name kept.
+pub const MACRO_NAME_MAX: usize = 32;
+
+pub fn macro_name<'a>(list: &'a [MacroName], board: &str, profile: u8, id: u8) -> Option<&'a str> {
+    list.iter().find(|m| m.board == board && m.profile == profile && m.id == id).map(|m| m.name.as_str())
+}
+
+/// Sets (or, for an empty name, removes) a macro name. Returns whether anything changed.
+pub fn set_macro_name(list: &mut Vec<MacroName>, board: &str, profile: u8, id: u8, name: &str) -> bool {
+    let name: String = name.trim().chars().take(MACRO_NAME_MAX).collect();
+    let pos = list.iter().position(|m| m.board == board && m.profile == profile && m.id == id);
+    match (pos, name.is_empty()) {
+        (Some(i), true) => {
+            list.remove(i);
+            true
+        }
+        (Some(i), false) if list[i].name != name => {
+            list[i].name = name;
+            true
+        }
+        (None, false) => {
+            list.push(MacroName { board: board.into(), profile, id, name });
+            true
+        }
+        _ => false,
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Store {
     #[serde(default)]
@@ -121,6 +160,9 @@ pub struct Store {
     /// Gen-1 knob per model, as last written (not readable from the keyboard).
     #[serde(default)]
     pub knobs: Vec<(Model, KnobMap)>,
+    /// Gen-2 macro names.
+    #[serde(default)]
+    pub macro_names: Vec<MacroName>,
 }
 
 impl Store {
@@ -294,6 +336,23 @@ pub fn normalize_exe(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn macro_names() {
+        let mut list = Vec::new();
+        assert!(set_macro_name(&mut list, "A75 Ultra (2025)", 0, 3, "  Copy  "));
+        assert_eq!(macro_name(&list, "A75 Ultra (2025)", 0, 3), Some("Copy"));
+        // Per board, profile and id.
+        assert_eq!(macro_name(&list, "A75 Ultra (2025)", 1, 3), None);
+        assert_eq!(macro_name(&list, "X60", 0, 3), None);
+        assert!(!set_macro_name(&mut list, "A75 Ultra (2025)", 0, 3, "Copy"));
+        assert!(set_macro_name(&mut list, "A75 Ultra (2025)", 0, 3, &"x".repeat(50)));
+        assert_eq!(macro_name(&list, "A75 Ultra (2025)", 0, 3).unwrap().chars().count(), MACRO_NAME_MAX);
+        // Empty removes.
+        assert!(set_macro_name(&mut list, "A75 Ultra (2025)", 0, 3, " "));
+        assert!(list.is_empty());
+        assert!(!set_macro_name(&mut list, "A75 Ultra (2025)", 0, 3, ""));
+    }
 
     #[test]
     fn rules_and_default() {
