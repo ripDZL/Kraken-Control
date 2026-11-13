@@ -154,3 +154,9 @@
 - ui2: Performance switch "Show live key depth", `sync_depth` / `demo_depth`, shading via `theme::depth_overlay_to` (new; gen-1 `depth_overlay` delegates). `--live-depth` arg for demo.
 - Verified: demo screenshot (WASD shading + amber lines); tests dd-proto 49, app 17; clippy both configs. Hardware untested.
 
+## 2026-11-13 (FN-layer advanced keys, local branch `dev`)
+- User: gen-2 live depth looks good on hardware. No repo updates until more changes are in -> commits stay on local branch `dev` in the cloud clone (push of `dev` refused by auto mode as an unwanted repo update).
+- Bundle: official parses / writes advanced keys on all 4 layers (L12478, L12805-12822) and creates them on the keyboard view's current layer (`layer: s`); its Advanced page resets to Main on entry (L24463); MT / pair tables use the factory Main key (`m["0_0"]`).
+- ui2: `LAYERS` shared; `base_action_in(layer, slot)` (layer's own plain action, else factory Main); `advanced_tag` + Advanced keycap labels follow `self.layer`; layer selector on Advanced (locked during a draft; DKS Edit jumps to the entry's layer); list = `find_advanced` per layer with layer column; create / remove / macro bind on `self.layer`; SOCD priority reset only if no SOCD left on that key in any layer; macro "on keys" names FN-layer keys.
+- Verified: demo XTest (FN1 -> Toggle -> J -> Create: J tagged TGL on FN1 only, Keymap + Advanced marked unsaved). Tests / clippy clean.
+

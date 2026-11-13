@@ -47,6 +47,7 @@ const LED_POLL: Duration = Duration::from_millis(60);
 const MACRO_DELAY_MS: u16 = 50;
 
 const KNOB_NAMES: [&str; 3] = ["Knob press", "Knob left", "Knob right"];
+const LAYERS: [&str; 4] = ["Main", "FN1", "FN2", "FN3"];
 /// DKS stages in stroke order (see `gen2::DksBind`).
 const DKS_STAGES: [&str; 4] = ["Press", "Bottom", "Release", "Top"];
 
@@ -1071,16 +1072,25 @@ impl Gen2Panel {
     /// What a key normally types: its Main-layer action, or for advanced
     /// keys (types 144..149) the factory action.
     fn base_action(&self, slot: usize) -> Action {
-        let a = self.keymap.first().and_then(|l| l.get(slot)).copied().unwrap_or_default();
-        if (gen2::kind::DKS..=gen2::kind::OKS).contains(&a.kind) {
-            self.snap.as_ref().and_then(|s| s.factory[0].get(slot)).copied().unwrap_or_default()
-        } else {
+        self.base_action_in(0, slot)
+    }
+
+    /// What a key does on `layer` when it isn't an advanced key: its own action
+    /// there, or (empty / advanced / FN key) the factory Main action, which is
+    /// what the official driver uses for advanced keys on every layer.
+    fn base_action_in(&self, layer: usize, slot: usize) -> Action {
+        let a = self.keymap.get(layer).and_then(|l| l.get(slot)).copied().unwrap_or_default();
+        let plain = a.kind != 0 && a.kind != gen2::kind::FUNCTION && !(gen2::kind::DKS..=gen2::kind::OKS).contains(&a.kind);
+        if plain {
             a
+        } else {
+            self.snap.as_ref().and_then(|s| s.factory[0].get(slot)).copied().unwrap_or_default()
         }
     }
 
+    /// Advanced-key / macro tag of a key on the layer the page shows.
     fn advanced_tag(&self, slot: usize) -> Option<&'static str> {
-        match self.keymap.first()?.get(slot)?.kind {
+        match self.keymap.get(self.layer)?.get(slot)?.kind {
             gen2::kind::DKS => Some("DKS"),
             gen2::kind::TGL => Some("TGL"),
             gen2::kind::MT => Some("MT"),
@@ -1138,7 +1148,8 @@ impl Gen2Panel {
             let rect = theme::keycap(&painter, rect, cap);
             let pad = unit * 0.06;
             let max_w = rect.width() - 2.0 * pad;
-            let label = slot.map(|s| gen2::label(&self.base_action(s))).filter(|s| !s.is_empty()).unwrap_or_else(|| k.name.clone());
+            let label_layer = if self.tab == Tab::Advanced { self.layer } else { 0 };
+            let label = slot.map(|s| gen2::label(&self.base_action_in(label_layer, s))).filter(|s| !s.is_empty()).unwrap_or_else(|| k.name.clone());
             let top_left = rect.left_top() + Vec2::splat(pad);
             match self.tab {
                 Tab::Performance => {
@@ -1390,7 +1401,6 @@ impl Gen2Panel {
     }
 
     fn keymap_editor(&mut self, ui: &mut egui::Ui) {
-        const LAYERS: [&str; 4] = ["Main", "FN1", "FN2", "FN3"];
         ui.horizontal(|ui| {
             ui.label("Layer:");
             for (i, n) in LAYERS.iter().enumerate() {
@@ -1486,12 +1496,12 @@ impl Gen2Panel {
             return;
         }
         if let Some(Draft::MacroBind { id }) = self.draft {
-            self.keymap[0][slot] = gen2::macro_action(id as u8);
+            self.keymap[self.layer][slot] = gen2::macro_action(id as u8);
             self.draft = None;
-            self.set_status(format!("{} plays M{} — Save to keyboard to apply", self.layout[i].name, id + 1), false);
+            self.set_status(format!("{} ({}) plays M{} — Save to keyboard to apply", self.layout[i].name, LAYERS[self.layer], id + 1), false);
             return;
         }
-        let base = self.base_action(slot);
+        let base = self.base_action_in(self.layer, slot);
         match self.draft.as_mut() {
             Some(Draft::Dks { slot: s, .. }) => *s = Some(slot),
             Some(Draft::Pair { keys, .. }) => {
@@ -1531,22 +1541,36 @@ impl Gen2Panel {
         if self.snap.is_none() {
             return;
         }
-        let list = gen2::find_advanced(&self.keymap[0], &self.mt, &self.tgl, &self.dks);
+        // New keys go on this layer; locked while an editor is open so a key isn't
+        // picked on one layer and created on another.
+        ui.horizontal(|ui| {
+            ui.label("Layer:");
+            ui.add_enabled_ui(self.draft.is_none(), |ui| {
+                for (i, n) in LAYERS.iter().enumerate() {
+                    ui.selectable_value(&mut self.layer, i, *n);
+                }
+            });
+            theme::help(ui, "New advanced keys and macro keys go on this layer.");
+        });
+        ui.add_space(4.0);
+        let list: Vec<(usize, Advanced)> =
+            self.keymap.iter().enumerate().flat_map(|(l, keys)| gen2::find_advanced(keys, &self.mt, &self.tgl, &self.dks).into_iter().map(move |a| (l, a))).collect();
         let name_of = |slot: u8| self.slot_name(slot);
         let lbl = |a: &Action| match gen2::label(a) {
             t if t.is_empty() => "nothing".to_string(),
             t => t,
         };
-        ui.label("Advanced keys on the Main layer:");
-        let mut remove: Option<Advanced> = None;
+        ui.label("Advanced keys:");
+        let mut remove: Option<(usize, Advanced)> = None;
         let mut new_priority: Option<(u8, u8, u8)> = None;
-        let mut edit: Option<(u8, u8)> = None;
-        egui::Grid::new("adv").num_columns(3).spacing([14.0, 6.0]).striped(true).show(ui, |ui| {
+        let mut edit: Option<(usize, u8, u8)> = None;
+        egui::Grid::new("adv").num_columns(4).spacing([14.0, 6.0]).striped(true).show(ui, |ui| {
             if list.is_empty() {
                 ui.label("none");
                 ui.end_row();
             }
-            for adv in &list {
+            for (layer, adv) in &list {
+                ui.label(theme::hint(LAYERS[*layer]));
                 match adv {
                     Advanced::Pair { kind, a, b, .. } => {
                         ui.strong(kind.name());
@@ -1579,13 +1603,13 @@ impl Gen2Panel {
                     Advanced::Dks { slot, entry, .. } => {
                         ui.strong("DKS");
                         ui.label(format!("{}: {}", name_of(*slot), dks_summary(&gen2::dks_entry(&self.dks, *entry as usize))));
-                        if ui.small_button("Edit").clicked() {
-                            edit = Some((*slot, *entry));
+                        if ui.add_enabled(self.draft.is_none(), egui::Button::new("Edit").small()).clicked() {
+                            edit = Some((*layer, *slot, *entry));
                         }
                     }
                 }
                 if ui.small_button("Remove").clicked() {
-                    remove = Some(adv.clone());
+                    remove = Some((*layer, adv.clone()));
                 }
                 ui.end_row();
             }
@@ -1594,11 +1618,12 @@ impl Gen2Panel {
             self.triggers[a as usize].set_priority(p);
             self.triggers[b as usize].set_priority([0, 2, 1][p.min(2) as usize]);
         }
-        if let Some((slot, entry)) = edit {
+        if let Some((layer, slot, entry)) = edit {
+            self.layer = layer; // the editor writes the key on the shown layer
             self.draft = Some(Draft::Dks { slot: Some(slot as usize), entry: Some(entry as usize), dks: gen2::dks_entry(&self.dks, entry as usize) });
         }
-        if let Some(adv) = remove {
-            self.remove_advanced(&adv);
+        if let Some((layer, adv)) = remove {
+            self.remove_advanced(layer, &adv);
         }
 
         ui.add_space(8.0);
@@ -1697,8 +1722,8 @@ impl Gen2Panel {
                 let (aa, ab) = (self.base_action(a), self.base_action(b));
                 gen2::set_mt_entry(&mut self.mt, k, aa, ab);
                 gen2::set_mt_entry(&mut self.mt, k + 1, ab, aa);
-                self.keymap[0][a] = Action { kind: kind.kind(), code1: k as u8, code2: b as u8 };
-                self.keymap[0][b] = Action { kind: kind.kind(), code1: k as u8 + 1, code2: a as u8 };
+                self.keymap[self.layer][a] = Action { kind: kind.kind(), code1: k as u8, code2: b as u8 };
+                self.keymap[self.layer][b] = Action { kind: kind.kind(), code1: k as u8 + 1, code2: a as u8 };
                 // The priority nibble belongs to SOCD; other pairs leave it at "last input".
                 let priority = if kind == PairKind::Socd { priority.min(2) } else { 0 };
                 self.triggers[a].set_priority(priority);
@@ -1720,14 +1745,14 @@ impl Gen2Panel {
                     None => gen2::free_entries(&gen2::dks_entries_used(&self.keymap), 1).ok_or("DKS table is full")?,
                 };
                 gen2::set_dks_entry(&mut self.dks, k, &dks);
-                self.keymap[0][s] = Action { kind: gen2::kind::DKS, code1: k as u8, code2: 0 };
+                self.keymap[self.layer][s] = Action { kind: gen2::kind::DKS, code1: k as u8, code2: 0 };
                 Ok(if entry.is_some() { "DKS key updated" } else { "DKS key added" }.into())
             }
             Draft::ModTap { key, tap, hold, hold_ms } => {
                 let s = slot(key)?;
                 let k = gen2::free_entries(&gen2::mt_entries_used(&self.keymap), 1).ok_or("advanced key table is full")?;
                 gen2::set_mt_entry(&mut self.mt, k, tap, hold);
-                self.keymap[0][s] = Action { kind: gen2::kind::MT, code1: k as u8, code2: (hold_ms / 10).min(255) as u8 };
+                self.keymap[self.layer][s] = Action { kind: gen2::kind::MT, code1: k as u8, code2: (hold_ms / 10).min(255) as u8 };
                 Ok("Mod Tap added".into())
             }
             Draft::MacroBind { .. } => Err("click a key".into()),
@@ -1735,33 +1760,40 @@ impl Gen2Panel {
                 let s = slot(key)?;
                 let k = gen2::free_entries(&gen2::tgl_entries_used(&self.keymap), 1).ok_or("toggle table is full")?;
                 gen2::set_tgl_entry(&mut self.tgl, k, action);
-                self.keymap[0][s] = Action { kind: gen2::kind::TGL, code1: k as u8, code2: 0 };
+                self.keymap[self.layer][s] = Action { kind: gen2::kind::TGL, code1: k as u8, code2: 0 };
                 Ok("Toggle added".into())
             }
         }
     }
 
     /// Puts the keys back to their factory Main-layer action and clears the table entries.
-    fn remove_advanced(&mut self, adv: &Advanced) {
-        let factory = |s: u8| self.snap.as_ref().map_or(Action::default(), |n| n.factory[0][s as usize]);
+    fn remove_advanced(&mut self, layer: usize, adv: &Advanced) {
+        let factory = |s: u8| self.snap.as_ref().and_then(|n| n.factory.get(layer)).map_or(Action::default(), |f| f[s as usize]);
         match adv {
             Advanced::Pair { a, b, entry, .. } => {
                 for (s, e) in [(*a, *entry), (*b, *entry + 1)] {
-                    self.keymap[0][s as usize] = factory(s);
-                    self.triggers[s as usize].set_priority(0);
+                    self.keymap[layer][s as usize] = factory(s);
                     gen2::set_mt_entry(&mut self.mt, e as usize, Action::default(), Action::default());
+                }
+                // Priority lives on the key, not the layer: keep it while the key is
+                // still in a SOCD pair on another layer.
+                for s in [*a, *b] {
+                    let still_socd = self.keymap.iter().any(|l| l[s as usize].kind == gen2::kind::SOCD);
+                    if !still_socd {
+                        self.triggers[s as usize].set_priority(0);
+                    }
                 }
             }
             Advanced::Mt { slot, entry, .. } => {
-                self.keymap[0][*slot as usize] = factory(*slot);
+                self.keymap[layer][*slot as usize] = factory(*slot);
                 gen2::set_mt_entry(&mut self.mt, *entry as usize, Action::default(), Action::default());
             }
             Advanced::Tgl { slot, entry, .. } => {
-                self.keymap[0][*slot as usize] = factory(*slot);
+                self.keymap[layer][*slot as usize] = factory(*slot);
                 gen2::set_tgl_entry(&mut self.tgl, *entry as usize, Action::default());
             }
             Advanced::Dks { slot, entry, .. } => {
-                self.keymap[0][*slot as usize] = factory(*slot);
+                self.keymap[layer][*slot as usize] = factory(*slot);
                 gen2::clear_dks_entry(&mut self.dks, *entry as usize);
             }
         }
@@ -1797,9 +1829,10 @@ impl Gen2Panel {
                 let keys: Vec<String> = self
                     .keymap
                     .iter()
-                    .flat_map(|l| l.iter().enumerate())
-                    .filter(|(_, a)| a.kind == gen2::kind::MACRO && a.code1 as usize == id)
-                    .map(|(slot, _)| self.slot_name(slot as u8))
+                    .enumerate()
+                    .flat_map(|(layer, l)| l.iter().enumerate().map(move |(slot, a)| (layer, slot, a)))
+                    .filter(|(_, _, a)| a.kind == gen2::kind::MACRO && a.code1 as usize == id)
+                    .map(|(layer, slot, _)| if layer == 0 { self.slot_name(slot as u8) } else { format!("{} {}", LAYERS[layer], self.slot_name(slot as u8)) })
                     .collect();
                 ui.strong(format!("M{}", id + 1));
                 ui.label(macro_summary(events));
