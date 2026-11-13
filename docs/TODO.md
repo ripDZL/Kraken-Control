@@ -60,6 +60,7 @@
 
 ## Web-driver parity (user request 2026-11-11)
 - [x] Gen-1: live key depth (Performance > Show live key depth; needs Turbo off).
+- Note (user 2026-11-13, "no Turbo toggle"): Turbo exists on gen-1 only (Performance > Whole keyboard, verified in demo). The 2025 A75 Ultra has no Turbo (0 references in the gen-2 bundle). CHANGELOG now says "original A75 Master / Ultra" for gen-1 items.
 - [x] Gen-1: knob, 6 actions (Keymap > click the knob).
 - [ ] Hardware: both of the above on A75 Master / Ultra (check log for FD 06 frames, C1 acks).
 - [x] Gen-2: DKS / Rappy Snappy / OKS editors (Advanced keys > Add; DKS rows have Edit).
