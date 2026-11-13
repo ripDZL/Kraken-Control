@@ -14,7 +14,7 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - `sendReport(0, 64 bytes)` → report ID 0; Windows buffer 65 bytes `[0, payload]`.
 - One command in flight (`commandQueue`), next input report = reply; official races 1.5 s and returns `[]` on timeout.
 - Reply byte 0 `AA` = OK, byte 1 = command echo (confirmed on hardware), data from byte 8.
-- Unsolicited: `A0` calibration, `A1 ?? idx` profile switched on keyboard, `A2` reset, `AA FA` lighting changed.
+- Unsolicited: `A0` calibration (format: see "Key travel during calibration"), `A1 ?? idx` profile switched on keyboard, `A2` reset, `AA FA` lighting changed.
 
 ## Framing (group 0x55)
 - Read: `55 cmd 00 sum len lo hi`, sum = (len+lo+hi)&FF, len ≤ 56.
@@ -90,6 +90,12 @@ Impl: `crates/dd-proto/src/gen2.rs`, `app/src/device2.rs`, `app/src/ui2.rs`. Dat
 - `advancedKeys[]`: `type` `dks` / `mt` / `tgl` / `rs` / `socd` / `oks`, `layer`, `index1` (slot), `index2` (partner slot); `mt`: `mtClickKey`, `mtDownKey`, `mtTime` ms (default 100); pairs: `key1`, `key2`; `tgl`: `tglKey`; `dks`: `dksPoint[4]`, `dksKeys[4]` = `{ key, downStart, downEnd, upStart, upEnd }` (editor values, continuation values included).
 - Import (L17712-17782 -> `setAllAdvancedKeys`, L12780-12817): writes the four layers, rebuilds the DKS / MT / TGL tables from the list in list order (a pair = two MT entries `[key1, key2]`, `[key2, key1]`), then sets the keymap entries: DKS `144 n 0`, MT `146 n time/10`, pair `kind n index2` and `kind n+1 index1`, TGL `145 n 0`; then travel.
 - Kraken: `backup::parse_official` builds the same tables / entries as a `backup::Gen2` (board = "official driver export"), which then goes through `Gen2Panel::import_backup` unchanged in its checks (only picker / factory actions, travel clamped, switch type and precision kept). Advanced entries in `userKeys` that the list doesn't cover get index 255 and fall back to factory. Macro keys fall back to factory (no macros in the file). Format taken from the code only — no real export file seen yet.
+
+## Key travel during calibration (read 2026-11-13, NOT used)
+- The only per-key travel the 2025 driver ever shows. Reports `A0 ...` arrive after `startCalibration` = `55 A8 00 00` (L711); `endCalibration` = `55 A9 00 00` (L714) stores the result. The reply queue skips `A0` reports (L290); a "calibration" listener (L2000-2007) feeds the calibration page (L19147-19158).
+- Report: `[1..4]` = keymap-style triple `[type, code1, code2]` naming the key (helper `K`, L1821); `[6..8]` = travel, u16 with byte 6 high (`F([e[7], e[6]])`, L481), probably 0.01 mm (switch max travel values in the same file are 400 / 360); `[10]` = per-key "check status" (calibration done marker).
+- No travel stream outside calibration found in any bundle file (no depth / travel / real-time read command; input-report handlers L285-296, L27614 only route A0/A1/A2/AA FA). Whether the keyboard sends A0 without A8 is unknown: a packet log with `<- A0` lines from normal use would show it.
+- Kraken does not send A8/A9 (safety rule): a calibration ended with keys not fully pressed may leave wrong travel limits until re-calibrated.
 
 ## Settings block (64 B)
 - `[1]` low nibble system mode (2 = mac) · `[4]` low = polling (1 8k, 2 4k, 3 2k, 4 1k), high = tick (0 off, 1 30, 2 60)
