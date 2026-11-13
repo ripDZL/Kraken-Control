@@ -2,7 +2,7 @@
 
 Current state and handoff. History is in PROGRESS.md.
 
-## State (2026-11-11)
+## State (2026-11-13)
 - Kraken Control v0.12.0: native Rust app for DrunkDeer A75 Master/Ultra (gen-1, VID 352D) and A75 Ultra 2025 (gen-2, 19F5:FB3E). Public at github.com/ripDZL/Kraken-Control (`main`), MIT.
 - Release v0.12.0 published (Latest), built by `.github/workflows/release.yml` on windows-latest (tests green on Windows), zip 1.6 MB (exe 3.1 MB, static CRT) + .sha256. Repo: topics set, private vulnerability reporting on, community files incl. CODE_OF_CONDUCT; social preview = `docs/social-preview.png`.
 - Website live at https://ripdzl.github.io/Kraken-Control/ from `site/` (pages.yml). Light page + app Dark Grey surfaces, teal accent. Hero demo tabs: Simulate (drag keycap, gen-2 ranges) and Your keyboard (live keydown/keyup timeline; browsers can't read depth).
@@ -27,6 +27,12 @@ Current state and handoff. History is in PROGRESS.md.
 - Software renderer checks (DPI, resize, clipboard, minimise), memory vs GPU.
 - Gen-1 Lighting (v0.9) on hardware; gen-2 Toggle add/remove; tray agent end-to-end.
 - Gen-2 DKS / Rappy Snappy / One Key Switch editors and macros (2026-11-11): user ran build a655f15 on the 2025 A75 Ultra, "everything seems okay" (not itemised, no log). Check list in TODO "Web-driver parity".
+
+## Handoff (2026-11-13)
+- GitHub `main` = 7d577ba (gen-2 live key depth; user confirmed on hardware). Version 0.13.0 tagged + draft release built; user publishes.
+- Unpushed, branch `dev` (user: no repo updates until more changes are in): f4bcc33 FN-layer advanced keys + macro keys; 9f519ab macro names; this summary. Delivered to the user as `kraken-dev.bundle` (`git fetch <path>\kraken-dev.bundle dev:dev`).
+- Next session: get `dev` (pushed branch if the user allows, else the bundle from the user's PC), then continue: UI overhaul remainder (gen-2 Performance Selected keys / Whole keyboard cards like gen-1; restyle Keymap / Advanced / Lighting editors). Push / merge / version bump only when the user says.
+- Parked: Windows memory creep (TODO).
 
 ## Next
 1. User tests on hardware: gen-1 live key depth (Performance) and knob (Keymap), then the v0.12.0 zip items still open.
