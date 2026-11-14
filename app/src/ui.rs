@@ -134,7 +134,7 @@ impl App {
         let demo_gen2 = std::env::args().any(|a| a == "--demo-gen2");
         let gen2 = crate::ui2::Gen2Panel::new(egui_ctx.clone(), demo_gen2);
         let store = Store::load();
-        let theme_id = if std::env::args().any(|a| a == "--theme=plumb") { ThemeId::BlackPlumb } else { store.settings.theme };
+        let theme_id = std::env::args().find_map(|a| a.strip_prefix("--theme=").and_then(ThemeId::from_arg)).unwrap_or(store.settings.theme);
         theme::apply(egui_ctx, theme_id);
         crate::log::set_packet_logging(store.settings.log_packets);
         let model = Model::A75Master;
@@ -568,7 +568,7 @@ impl App {
                         let idx = i as u8 + 1;
                         let (r, p) = ui.allocate_exact_size(Vec2::splat(22.0), Sense::click());
                         ui.painter().rect_filled(r, 4.0, Color32::from_rgb(c[0], c[1], c[2]));
-                        let stroke = if self.light.colour == idx { Stroke::new(2.0_f32, Color32::WHITE) } else { Stroke::new(1.0_f32, pal().input) };
+                        let stroke = if self.light.colour == idx { Stroke::new(2.0_f32, pal().text) } else { Stroke::new(1.0_f32, pal().disabled) };
                         ui.painter().rect_stroke(r, 4.0, stroke, StrokeKind::Inside);
                         if p.on_hover_text(*name).clicked() {
                             self.light.colour = idx;
@@ -660,7 +660,7 @@ impl App {
             for c in SWATCHES {
                 let (r, p) = ui.allocate_exact_size(Vec2::splat(22.0), Sense::click());
                 ui.painter().rect_filled(r, 4.0, Color32::from_rgb(c[0], c[1], c[2]));
-                let stroke = if self.light_paint == c { Stroke::new(2.0_f32, Color32::WHITE) } else { Stroke::new(1.0_f32, pal().input) };
+                let stroke = if self.light_paint == c { Stroke::new(2.0_f32, pal().text) } else { Stroke::new(1.0_f32, pal().disabled) };
                 ui.painter().rect_stroke(r, 4.0, stroke, StrokeKind::Inside);
                 if p.clicked() {
                     self.light_paint = c;
@@ -1306,7 +1306,7 @@ impl App {
                 ui,
                 &mut self.live_depth,
                 "Show live key depth",
-                "Press keys on your keyboard to see how far each one goes down. A key turns teal once it passes its actuation point (amber line).",
+                "Press keys on your keyboard to see how far each one goes down. The shading changes colour once a key passes its actuation point (the line across it).",
             );
         });
         if turbo {
@@ -1862,11 +1862,18 @@ impl App {
         theme::card(ui, |ui| {
             theme::section(ui, "Appearance");
             let mut id = theme::current();
-            theme::setting(ui, "Theme", "Dark Grey is the default. Black-Plumb uses plum, black and green.", |ui| {
-                for t in ThemeId::ALL {
-                    ui.selectable_value(&mut id, t, t.name());
-                }
-            });
+            theme::setting(
+                ui,
+                "Theme",
+                "Dark Grey is the default. Black-Plumb uses plum, black and green; White is light. Colour-blind keeps every state apart with any type of colour blindness and marks selected keys with a thick outline.",
+                |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for t in ThemeId::ALL {
+                            ui.selectable_value(&mut id, t, t.name());
+                        }
+                    });
+                },
+            );
             if id != theme::current() {
                 theme::apply(ui.ctx(), id);
                 ui.ctx().request_repaint();
@@ -1932,7 +1939,7 @@ impl App {
     fn keyboard_legend(&self) -> Option<&'static str> {
         match self.tab {
             Tab::Performance if self.live_depth && self.depth.is_some() => {
-                Some("Live key depth: the shading shows how far each key is pressed. Teal = past its actuation point (amber line).")
+                Some("Live key depth: the shading shows how far each key is pressed and changes colour past its actuation point (the line across the key).")
             }
             Tab::Performance if self.flags.rapid_trigger => {
                 Some("Big number: actuation point in mm. Small pair: press and release sensitivity (- = keyboard default). Ctrl+click selects more keys.")

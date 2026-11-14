@@ -60,8 +60,10 @@ product ID.
   anything reaches the keyboard.
 - Import profiles exported by the official 2025 web driver (key travel,
   keymap, advanced keys).
-- Two themes, Dark Grey (default) and Black-Plumb, both checked for WCAG text
-  contrast.
+- Four themes: Dark Grey (default), Black-Plumb, White and Colour-blind, all
+  checked for WCAG text contrast. Colour-blind uses Okabe–Ito colours checked
+  against simulated protanopia, deuteranopia and tritanopia, and marks
+  selected keys with a thick outline so nothing depends on colour alone.
 - Portable mode: put a file named `portable` next to the exe and settings
   stay in a `data` folder beside it.
 

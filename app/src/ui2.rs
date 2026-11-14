@@ -1128,9 +1128,9 @@ impl Gen2Panel {
     /// Line under the keyboard explaining what the keys show on this page.
     fn keyboard_legend(&self) -> Option<&'static str> {
         match self.tab {
-            Tab::Performance if self.live_depth => Some("Live key depth: the shading shows how far each key is pressed. Teal = past its actuation point (amber line)."),
+            Tab::Performance if self.live_depth => Some("Live key depth: the shading shows how far each key is pressed and changes colour past its actuation point (the line across the key)."),
             Tab::Performance => Some("Big number: actuation point in mm. Small pair: Rapid Trigger press and release sensitivity (C = continuous). Ctrl+click selects more keys."),
-            Tab::Keymap => Some("Keys show what they send on this layer; teal = changed from the factory layout. Click the knob's left, middle or right part for turning and pressing."),
+            Tab::Keymap => Some("Keys show what they send on this layer. Outlined keys differ from the factory layout. Click the knob's left, middle or right part for turning and pressing."),
             Tab::Advanced => Some("Outlined keys are advanced keys or macro keys on the layer chosen below; the tag says which kind."),
             _ => None,
         }
@@ -1176,7 +1176,10 @@ impl Gen2Panel {
                 _ => None,
             };
             let tag = slot.and_then(|s| self.advanced_tag(s));
-            let edge = (tag.is_some() && self.tab == Tab::Advanced).then_some(teal);
+            // Outline = advanced key (Advanced) or changed from the factory (Keymap):
+            // a cue that doesn't rely on colour.
+            let changed = self.tab == Tab::Keymap && self.factory_action(self.layer, i).is_some_and(|f| f != self.key_action(self.layer, i).unwrap_or_default());
+            let edge = ((tag.is_some() && self.tab == Tab::Advanced) || changed).then_some(teal);
             let cap = Cap { fill: key_color, selected, hovered: r.hovered(), edge, empty: slot.is_none() };
             // Text goes on the top face.
             let rect = theme::keycap(&painter, rect, cap);
@@ -1483,7 +1486,7 @@ impl Gen2Panel {
             ui,
             &mut self.live_depth,
             "Show live key depth",
-            "Press keys on your keyboard to see how far each one goes down. A key turns teal once it passes its actuation point (amber line).",
+            "Press keys on your keyboard to see how far each one goes down. The shading changes colour once a key passes its actuation point (the line across it).",
         );
     }
 
@@ -2149,7 +2152,7 @@ impl Gen2Panel {
             for c in SWATCHES {
                 let (r, p) = ui.allocate_exact_size(Vec2::splat(22.0), Sense::click());
                 ui.painter().rect_filled(r, 4.0, Color32::from_rgb(c[0], c[1], c[2]));
-                let stroke = if self.paint == c { Stroke::new(2.0_f32, Color32::WHITE) } else { Stroke::new(1.0_f32, pal().input) };
+                let stroke = if self.paint == c { Stroke::new(2.0_f32, pal().text) } else { Stroke::new(1.0_f32, pal().disabled) };
                 ui.painter().rect_stroke(r, 4.0, stroke, StrokeKind::Inside);
                 if p.clicked() {
                     self.paint = c;

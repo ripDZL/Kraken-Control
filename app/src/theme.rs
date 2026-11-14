@@ -16,22 +16,41 @@ pub enum ThemeId {
     #[default]
     DarkGrey,
     BlackPlumb,
+    White,
+    /// Okabe–Ito colours that stay apart in protan-, deutan- and tritanopia,
+    /// plus thicker selection outlines (test `colour_blind_roles_stay_apart`).
+    ColourBlind,
 }
 
 impl ThemeId {
-    pub const ALL: [ThemeId; 2] = [ThemeId::DarkGrey, ThemeId::BlackPlumb];
+    pub const ALL: [ThemeId; 4] = [ThemeId::DarkGrey, ThemeId::BlackPlumb, ThemeId::White, ThemeId::ColourBlind];
 
     pub fn name(self) -> &'static str {
         match self {
             ThemeId::DarkGrey => "Dark Grey",
             ThemeId::BlackPlumb => "Black-Plumb",
+            ThemeId::White => "White",
+            ThemeId::ColourBlind => "Colour-blind",
         }
+    }
+
+    /// `--theme=` value (screenshots; not saved).
+    pub fn from_arg(s: &str) -> Option<ThemeId> {
+        Some(match s {
+            "grey" | "dark" => ThemeId::DarkGrey,
+            "plumb" => ThemeId::BlackPlumb,
+            "white" | "light" => ThemeId::White,
+            "colourblind" | "colorblind" | "cb" => ThemeId::ColourBlind,
+            _ => return None,
+        })
     }
 
     fn palette(self) -> &'static Palette {
         match self {
             ThemeId::DarkGrey => &DARK_GREY,
             ThemeId::BlackPlumb => &BLACK_PLUMB,
+            ThemeId::White => &WHITE,
+            ThemeId::ColourBlind => &COLOUR_BLIND,
         }
     }
 }
@@ -88,6 +107,13 @@ pub struct Palette {
     pub key_legend: Color32,
     /// Pair / advanced-key badges and outlines.
     pub key_tag: Color32,
+    /// Travel values on keycaps: shortest and deepest actuation (blended between).
+    pub travel: [Color32; 2],
+    /// Outline width of selected keys and of tagged / changed keys.
+    pub select_width: f32,
+    pub tag_width: f32,
+    /// Dark or light surfaces (egui's base style).
+    pub dark: bool,
     /// Buttons and inputs; cards add 4.
     pub radius: u8,
     pub font: UiFont,
@@ -127,6 +153,10 @@ pub const DARK_GREY: Palette = Palette {
     key_empty: hex(0x222327),
     key_legend: hex(0xD5D8DC),
     key_tag: hex(0x3CC8B4),
+    travel: TRAVEL_ON_DARK,
+    select_width: 2.0,
+    tag_width: 2.0,
+    dark: true,
     radius: 6,
     font: UiFont::Atkinson,
 };
@@ -163,15 +193,106 @@ pub const BLACK_PLUMB: Palette = Palette {
     key_empty: hex(0x2E2240),
     key_legend: hex(0xF7F0E7),
     key_tag: hex(0x8BD452),
+    travel: TRAVEL_ON_DARK,
+    select_width: 2.0,
+    tag_width: 2.0,
+    dark: true,
     radius: 6,
     font: UiFont::JetBrainsMono,
 };
+
+/// Light grey page, white cards and keycaps, dark teal accent.
+pub const WHITE: Palette = Palette {
+    bg: hex(0xEEF0F3),
+    chrome: hex(0xFFFFFF),
+    card: hex(0xFFFFFF),
+    card_edge: hex(0xDADDE2),
+    line: hex(0xE1E4E8),
+    input: hex(0xE6E8EC),
+    button: hex(0xE4E7EB),
+    button_hover: hex(0xD7DBE0),
+    button_text: hex(0x16181B),
+    accent: hex(0x0B7D70),
+    accent_hover: hex(0x096B60),
+    on_accent: hex(0xFFFFFF),
+    nav_active: hex(0xD4EEEA),
+    nav_active_text: hex(0x0A5A51),
+    text: hex(0x14161A),
+    text_body: hex(0x272A30),
+    muted: hex(0x585E68),
+    disabled: hex(0x7E848D),
+    unsaved: hex(0x9A5400),
+    error: hex(0xC0321F),
+    link: hex(0x0A6E63),
+    plate: hex(0xCDD2D9),
+    key_skirt: hex(0xB9BFC8),
+    key_top: hex(0xFBFCFD),
+    key_hover: hex(0xEEF1F4),
+    key_selected: hex(0xD7F0EC),
+    key_empty: hex(0xE3E6EA),
+    key_legend: hex(0x1E2126),
+    key_tag: hex(0x0A6E63),
+    travel: [hex(0x1F5FAE), hex(0xA34A00)],
+    select_width: 2.0,
+    tag_width: 2.0,
+    dark: false,
+    radius: 6,
+    font: UiFont::Atkinson,
+};
+
+/// Dark theme for colour-blind users. Roles use the Okabe–Ito set (sky blue,
+/// yellow, reddish purple, orange), chosen so every pair stays apart in
+/// simulated protanopia, deuteranopia and tritanopia; selected keys get a
+/// thick outline and tagged keys a thin one, so nothing depends on colour
+/// alone (monochromacy).
+pub const COLOUR_BLIND: Palette = Palette {
+    bg: hex(0x1C1D20),
+    chrome: hex(0x141517),
+    card: hex(0x25272B),
+    card_edge: hex(0x34363C),
+    line: hex(0x3A3D43),
+    input: hex(0x313338),
+    button: hex(0x383B41),
+    button_hover: hex(0x45484F),
+    button_text: hex(0xF2F3F4),
+    accent: hex(0x56B4E9),
+    accent_hover: hex(0x7FC7F0),
+    on_accent: hex(0x0B1620),
+    nav_active: hex(0x2F8FC6),
+    nav_active_text: hex(0x061019),
+    text: hex(0xF4F5F6),
+    text_body: hex(0xE0E2E5),
+    muted: hex(0xB2B6BD),
+    disabled: hex(0x80848B),
+    unsaved: hex(0xF0E442),
+    error: hex(0xCC79A7),
+    link: hex(0x8FD0F5),
+    plate: hex(0x17181B),
+    key_skirt: hex(0x2B2D32),
+    key_top: hex(0x3A3D43),
+    key_hover: hex(0x44474E),
+    key_selected: hex(0x0D2335),
+    key_empty: hex(0x202125),
+    key_legend: hex(0xE0E2E5),
+    key_tag: hex(0xF5A623),
+    travel: [hex(0x8CC8F5), hex(0xF5A623)],
+    select_width: 3.5,
+    tag_width: 1.5,
+    dark: true,
+    radius: 6,
+    font: UiFont::Atkinson,
+};
+
+/// Short = light blue, deep = orange (blue / orange stays apart for colour-blind users too).
+const TRAVEL_ON_DARK: [Color32; 2] = [hex(0x8CC3FF), hex(0xFFA05A)];
 
 static CURRENT: AtomicU8 = AtomicU8::new(0);
 
 pub fn current() -> ThemeId {
     match CURRENT.load(Ordering::Relaxed) {
         1 => ThemeId::BlackPlumb,
+        2 => ThemeId::White,
+        3 => ThemeId::ColourBlind,
         _ => ThemeId::DarkGrey,
     }
 }
@@ -186,7 +307,8 @@ pub fn apply(ctx: &egui::Context, id: ThemeId) {
     CURRENT.store(id as u8, Ordering::Relaxed);
     let p = id.palette();
     ctx.set_fonts(fonts(p));
-    // Both palettes are dark; don't follow a light Windows theme into egui's light style.
+    // One style slot for every theme (light ones included), so a light or dark
+    // Windows theme never swaps egui's style under us.
     ctx.set_theme(egui::ThemePreference::Dark);
     ctx.set_style_of(egui::Theme::Dark, style(p));
 }
@@ -249,7 +371,7 @@ fn style(p: &Palette) -> egui::Style {
 }
 
 fn visuals(p: &Palette) -> egui::Visuals {
-    let mut v = egui::Visuals::dark();
+    let mut v = if p.dark { egui::Visuals::dark() } else { egui::Visuals::light() };
     let r = CornerRadius::same(p.radius);
     v.panel_fill = p.bg;
     v.window_fill = p.card;
@@ -620,16 +742,16 @@ pub fn keycap(painter: &Painter, rect: Rect, cap: Cap) -> Rect {
     });
     painter.rect_filled(top, r * 0.75, face);
     let edge = if cap.selected {
-        Some(p.accent)
-    } else if cap.edge.is_some() {
-        cap.edge
+        Some((p.accent, p.select_width))
+    } else if let Some(c) = cap.edge {
+        Some((c, p.tag_width))
     } else if cap.hovered && cap.fill.is_some() {
-        Some(p.text)
+        Some((p.text, 2.0))
     } else {
         None
     };
-    if let Some(c) = edge {
-        painter.rect_stroke(rect, r, Stroke::new(2.0_f32, c), StrokeKind::Inside);
+    if let Some((c, w)) = edge {
+        painter.rect_stroke(rect, r, Stroke::new(w, c), StrokeKind::Inside);
     }
     top
 }
@@ -685,9 +807,14 @@ pub fn ink_on(c: Color32) -> Color32 {
 
 /// Colour for travel values on keys: short = blue, deep = orange (readable on keycaps).
 pub fn travel_color(mm: f32) -> Color32 {
+    travel_color_in(pal(), mm)
+}
+
+fn travel_color_in(p: &Palette, mm: f32) -> Color32 {
     let t = ((mm - 0.2) / 3.1).clamp(0.0, 1.0);
+    let [a, b] = p.travel;
     let lerp = |a: u8, b: u8| (a as f32 + (b as f32 - a as f32) * t) as u8;
-    Color32::from_rgb(lerp(140, 255), lerp(195, 160), lerp(255, 90))
+    Color32::from_rgb(lerp(a.r(), b.r()), lerp(a.g(), b.g()), lerp(a.b(), b.b()))
 }
 
 /// WCAG relative luminance.
@@ -877,13 +1004,67 @@ mod tests {
                 check(&format!("muted/{face_name}"), p.muted, face, 4.5);
                 check(&format!("key_tag/{face_name}"), p.key_tag, face, 4.5);
                 for mm in [0.2, 1.0, 2.0, 3.3] {
-                    check(&format!("travel {mm}/{face_name}"), travel_color(mm), face, 4.5);
+                    check(&format!("travel {mm}/{face_name}"), travel_color_in(p, mm), face, 4.5);
                 }
             }
             check("disabled button", faded(p.button_text, p.card), faded(p.button, p.card), 3.0);
             check("disabled label", faded(p.text_body, p.card), p.card, 3.0);
             assert!(bad.is_empty(), "{}: {bad:#?}", id.name());
         }
+    }
+
+    /// Colour-blind theme: the colours that mark states (selected, unsaved,
+    /// error, advanced key) stay apart in simulated full protanopia,
+    /// deuteranopia and tritanopia (Machado et al. 2009, severity 1.0), measured
+    /// as OKLab distance. Monochromacy is covered by outlines, icons and text.
+    #[test]
+    fn colour_blind_roles_stay_apart() {
+        const SIM: [(&str, [[f64; 3]; 3]); 3] = [
+            ("protanopia", [[0.152286, 1.052583, -0.204868], [0.114503, 0.786281, 0.099216], [-0.003882, -0.048116, 1.051998]]),
+            ("deuteranopia", [[0.367322, 0.860646, -0.227968], [0.280085, 0.672501, 0.047413], [-0.011820, 0.042940, 0.968881]]),
+            ("tritanopia", [[1.255528, -0.076749, -0.178779], [-0.078411, 0.930809, 0.147602], [0.004733, 0.691367, 0.303900]]),
+        ];
+        let lin = |v: u8| {
+            let v = v as f64 / 255.0;
+            if v <= 0.04045 {
+                v / 12.92
+            } else {
+                ((v + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        let oklab = |rgb: [f64; 3]| {
+            let [r, g, b] = rgb.map(|v| v.clamp(0.0, 1.0));
+            let l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b).cbrt();
+            let m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b).cbrt();
+            let s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b).cbrt();
+            [
+                0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+                1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+                0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+            ]
+        };
+        let p = ThemeId::ColourBlind.palette();
+        let roles = [("accent", p.accent), ("unsaved", p.unsaved), ("error", p.error), ("key_tag", p.key_tag)];
+        let mut worst = (f64::MAX, String::new());
+        for (sim, m) in SIM {
+            let seen = |c: Color32| {
+                let v = [lin(c.r()), lin(c.g()), lin(c.b())];
+                oklab([0, 1, 2].map(|i| m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2]))
+            };
+            for (i, (a, ca)) in roles.iter().enumerate() {
+                for (b, cb) in &roles[i + 1..] {
+                    let (x, y) = (seen(*ca), seen(*cb));
+                    let d = ((x[0] - y[0]).powi(2) + (x[1] - y[1]).powi(2) + (x[2] - y[2]).powi(2)).sqrt();
+                    if d < worst.0 {
+                        worst = (d, format!("{a} / {b} in {sim}"));
+                    }
+                }
+            }
+        }
+        // 0.09 OKLab is a clearly visible difference (just-noticeable is about 0.02).
+        assert!(worst.0 >= 0.09, "{}: {:.3}", worst.1, worst.0);
+        // Selection never relies on colour alone.
+        assert!(p.select_width >= p.tag_width + 1.5);
     }
 
     /// Text on any per-key lighting colour stays readable.

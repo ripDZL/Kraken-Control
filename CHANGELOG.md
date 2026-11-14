@@ -4,6 +4,8 @@ Notable changes to Kraken Control. Versions follow [Semantic Versioning](https:/
 
 ## Unreleased
 
+- **White and Colour-blind themes:** Settings › Appearance. White is a light theme. Colour-blind keeps selected, unsaved, error and advanced-key colours apart with any type of colour blindness (blue, yellow, purple and orange from the Okabe–Ito set) and marks selected keys with a thick outline. Changed keys on the Keymap page (2025 A75 Ultra) are now outlined, like on the original boards.
+
 - **Cleaner pages (A75 Ultra 2025):** Performance has the same Selected keys / Whole keyboard cards as the original A75 boards; anti-shake level and Adaptive Stable moved there from Settings. Keymap, Advanced keys (with each editor in its own card), macros, Lighting (Custom colours tools in their own card) and Settings use labelled rows with a short explanation under each option.
 
 - **Macro names (A75 Ultra 2025):** give macros a name in the macro editor. Names are kept on this PC (the keyboard stores macros without names) and are included in Kraken's back-up file.

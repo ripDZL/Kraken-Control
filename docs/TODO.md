@@ -96,3 +96,6 @@
 - [ ] Hardware (A75 Ultra 2025, `dev`): Performance cards (edit, Save, Reload), Whole keyboard anti-shake / Adaptive Stable save, Advanced editors (SOCD / RS / OKS / MT / Toggle / DKS create + DKS edit), macro editor, Custom colours tools, Settings rows.
 - [ ] Gen-1 Keymap / Advanced / Lighting editors: same restyle (not done; gen-1 Performance already has the cards).
 - [ ] Optional: load the user's theme JSON directly instead of the built-in Black-Plumb copy.
+- [x] White and Colour-blind themes (2026-11-14, `dev`; demo-tested on every gen-2 page + gen-1 Performance / Advanced).
+- [ ] Windows (`dev`): White and Colour-blind on every page, both boards; popups / combo boxes / tooltips readable on White; switching themes in Settings applies at once.
+- [ ] Optional: a light Colour-blind variant if wanted.
