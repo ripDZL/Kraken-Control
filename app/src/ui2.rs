@@ -52,6 +52,8 @@ const KNOB_NAMES: [&str; 3] = ["Knob press", "Knob left", "Knob right"];
 const LAYERS: [&str; 4] = ["Main", "FN1", "FN2", "FN3"];
 /// DKS stages in stroke order (see `gen2::DksBind`).
 const DKS_STAGES: [&str; 4] = ["Press", "Bottom", "Release", "Top"];
+/// SOCD priority values 0..2 (`Trigger::priority`).
+const SOCD_PRIORITY: [&str; 3] = ["Last input wins", "First key wins", "Second key wins"];
 
 pub struct Gen2Panel {
     dev: device2::Handle,
@@ -145,6 +147,9 @@ const EDITABLE: &[func::Field] = &[
     func::LIGHT_B,
     func::LIGHT_DIRECTION,
 ];
+
+/// Settings fields shown on Performance › Whole keyboard (the rest are on Settings).
+const WHOLE_KEYBOARD: &[func::Field] = &[func::DEBOUNCE, func::ADAPTIVE];
 
 /// Keyboard settings and lighting fields saved in back-up files, by name.
 const BACKUP_FIELDS: &[(&str, func::Field)] = &[
@@ -327,11 +332,14 @@ impl Gen2Panel {
         };
         self.connected = Some(snap.name);
         self.apply(snap);
-        // `--g2draft=dks|rs|oks` opens an editor on the Advanced keys page (screenshots).
+        // `--g2draft=dks|rs|oks|socd|mt|tgl|macro` opens an editor on the Advanced keys page (screenshots).
         self.draft = match std::env::args().find_map(|a| a.strip_prefix("--g2draft=").map(str::to_string)).as_deref() {
             Some("dks") => Some(Draft::Dks { slot: Some(q), entry: Some(0), dks: demo_dks }),
             Some("rs") => Some(Draft::Pair { kind: PairKind::Rs, keys: [Some(q), Some(e)], priority: 0 }),
             Some("oks") => Some(Draft::Pair { kind: PairKind::Oks, keys: [Some(q), None], priority: 0 }),
+            Some("socd") => Some(Draft::Pair { kind: PairKind::Socd, keys: [Some(at("A")), Some(at("D"))], priority: 1 }),
+            Some("mt") => Some(Draft::ModTap { key: Some(e), tap: factory[e], hold: Action { kind: gen2::kind::KEY, code1: 1, code2: 0 }, hold_ms: 200 }),
+            Some("tgl") => Some(Draft::Toggle { key: None, action: Action::default() }),
             Some("macro") => {
                 self.macro_edit = Some(MacroEdit { id: 0, name: "Copy".into(), events: self.macros[0].clone(), recording: false, timed: false, last_event: None, mods: egui::Modifiers::NONE });
                 None
@@ -740,11 +748,12 @@ impl Gen2Panel {
 
     /// Amber dot in the page menu (lighting is written live, never pending).
     pub fn page_dirty(&self, page: Page) -> bool {
+        let on_performance = |f: &(func::Field, u8)| WHOLE_KEYBOARD.contains(&f.0);
         match page {
-            Tab::Performance => self.triggers_dirty(),
+            Tab::Performance => self.triggers_dirty() || self.func_edits().iter().any(on_performance),
             Tab::Keymap => !self.keymap_dirty_layers().is_empty(),
             Tab::Advanced => !self.tables_dirty().is_empty() || self.macros_dirty(),
-            Tab::Settings => !self.func_edits().is_empty(),
+            Tab::Settings => self.func_edits().iter().any(|f| !on_performance(f)),
             _ => false,
         }
     }
@@ -797,16 +806,25 @@ impl Gen2Panel {
                 ui.add_space(8.0);
                 ui.vertical_centered(|ui| self.keyboard(ui));
                 ui.add_space(10.0);
+                if let Some(t) = self.keyboard_legend() {
+                    theme::help(ui, t);
+                }
             });
         }
         match self.tab {
-            Tab::Performance => theme::card(ui, |ui| self.performance(ui)),
+            Tab::Performance => self.performance(ui),
             Tab::Keymap => theme::card(ui, |ui| self.keymap_editor(ui)),
             Tab::Advanced => {
                 theme::card(ui, |ui| self.advanced(ui));
+                if self.draft.is_some() {
+                    theme::card(ui, |ui| self.draft_editor(ui));
+                }
                 theme::card(ui, |ui| names_changed = self.macros_card(ui, names));
             }
             Tab::Lighting => {
+                if custom_light {
+                    theme::card(ui, |ui| self.custom_colors(ui));
+                }
                 theme::card(ui, |ui| self.lighting(ui));
                 if live_view {
                     // Below the controls, so they stay in view without scrolling.
@@ -1107,6 +1125,17 @@ impl Gen2Panel {
         }
     }
 
+    /// Line under the keyboard explaining what the keys show on this page.
+    fn keyboard_legend(&self) -> Option<&'static str> {
+        match self.tab {
+            Tab::Performance if self.live_depth => Some("Live key depth: the shading shows how far each key is pressed. Teal = past its actuation point (amber line)."),
+            Tab::Performance => Some("Big number: actuation point in mm. Small pair: Rapid Trigger press and release sensitivity (C = continuous). Ctrl+click selects more keys."),
+            Tab::Keymap => Some("Keys show what they send on this layer; teal = changed from the factory layout. Click the knob's left, middle or right part for turning and pressing."),
+            Tab::Advanced => Some("Outlined keys are advanced keys or macro keys on the layer chosen below; the tag says which kind."),
+            _ => None,
+        }
+    }
+
     fn keyboard(&mut self, ui: &mut egui::Ui) {
         let live_view = self.live_view();
         let live_now = Instant::now();
@@ -1325,41 +1354,56 @@ impl Gen2Panel {
         self.selected.iter().filter_map(|i| self.slots.get(*i).copied().flatten()).map(|s| s as usize).collect()
     }
 
+    /// Performance page: "Selected keys" and "Whole keyboard" cards, side by side
+    /// when there is room (same layout as the original A75 boards).
     fn performance(&mut self, ui: &mut egui::Ui) {
-        theme::switch_row(
-            ui,
-            &mut self.live_depth,
-            "Show live key depth",
-            "Press keys on your keyboard to see how far each one goes down. A key turns teal once it passes its actuation point (amber line).",
-        );
-        ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Select:");
-            if ui.button("All").clicked() {
-                self.selected = (0..self.layout.len()).filter(|i| self.slots[*i].is_some()).collect();
+        if ui.available_width() > 860.0 {
+            ui.columns(2, |c| {
+                theme::card(&mut c[0], |ui| self.travel_card(ui));
+                theme::card(&mut c[1], |ui| self.whole_keyboard_card(ui));
+            });
+        } else {
+            theme::card(ui, |ui| self.travel_card(ui));
+            theme::card(ui, |ui| self.whole_keyboard_card(ui));
+        }
+    }
+
+    fn travel_card(&mut self, ui: &mut egui::Ui) {
+        theme::section_with(ui, "Selected keys", |ui| {
+            if ui.button("None").clicked() {
+                self.selected.clear();
             }
             if ui.button("WASD").clicked() {
                 self.selected = self.layout.iter().enumerate().filter(|(_, k)| matches!(k.name.as_str(), "W" | "A" | "S" | "D")).map(|(i, _)| i).collect();
             }
-            if ui.button("None").clicked() {
-                self.selected.clear();
+            if ui.button("All").clicked() {
+                self.selected = (0..self.layout.len()).filter(|i| self.slots[*i].is_some()).collect();
             }
-            theme::help(ui, "Click a key; Ctrl/Shift+click to add.");
         });
-        ui.separator();
         let sel = self.selected_slots();
         if sel.is_empty() {
-            ui.label("Select keys to edit actuation, Rapid Trigger and dead zones.");
+            theme::help(ui, "Click a key on the keyboard to change it. Ctrl+click adds more keys.");
             return;
         }
         let first = self.triggers[sel[0]];
-        ui.label(format!("{} key(s) selected · switch: {}", sel.len(), gen2::SWITCHES.get(first.switch_type() as usize).map_or("?", |s| s.0)));
+        let names: Vec<&str> = self.selected.iter().filter(|&&i| self.slots[i].is_some()).take(6).map(|&i| self.layout[i].name.as_str()).collect();
+        let more = sel.len().saturating_sub(names.len());
+        let list = if more > 0 { format!("{} and {more} more", names.join(", ")) } else { names.join(", ") };
+        let switch = if sel.iter().all(|&s| self.triggers[s].switch_type() == first.switch_type()) {
+            gen2::SWITCHES.get(first.switch_type() as usize).map_or("Unknown switch".to_string(), |s| format!("{} switch, {} mm travel", s.0, theme::mm(f32::from(s.1) / 100.0)))
+        } else {
+            "Mixed switches".to_string()
+        };
+        theme::help(ui, format!("{list}. {switch}. Ctrl+click adds more keys."));
+        ui.separator();
 
         let mut mode = first.mode();
-        ui.horizontal(|ui| {
-            ui.add_sized([150.0, 18.0], egui::Label::new("Rapid Trigger"));
-            for m in RtMode::ALL {
-                if ui.selectable_value(&mut mode, m, m.name()).changed() {
+        let mode_label = if sel.iter().any(|&s| self.triggers[s].mode() != mode) { "Rapid Trigger (mixed)" } else { "Rapid Trigger" };
+        theme::setting(ui, mode_label, "Resets a key as soon as it starts rising, so you can press again without letting go fully.", |ui| {
+            for (m, name) in [(RtMode::Off, "Off"), (RtMode::On, "On"), (RtMode::Continuous, "Continuous")] {
+                let r = ui.selectable_value(&mut mode, m, name);
+                let r = if m == RtMode::Continuous { r.on_hover_text("The official driver's continuous Rapid Trigger mode.") } else { r };
+                if r.changed() {
                     for &s in &sel {
                         self.triggers[s].set_mode(mode);
                     }
@@ -1367,24 +1411,38 @@ impl Gen2Panel {
             }
         });
 
-        ui.spacing_mut().slider_width = (ui.available_width() - 330.0).clamp(160.0, 520.0);
+        ui.spacing_mut().slider_width = theme::setting_slider_width(ui);
         let max_ap = sel.iter().map(|&s| gen2::max_actuation_mm(&self.triggers[s])).fold(gen2::ACTUATION_MM.1, f32::min);
-        type Row = (&'static str, fn(&Trigger) -> f32, fn(&mut Trigger, f32), (f32, f32), bool);
+        let rt = mode != RtMode::Off;
+        type Row = (&'static str, &'static str, fn(&Trigger) -> f32, fn(&mut Trigger, f32), (f32, f32), bool);
         let rows: [Row; 5] = [
-            ("Actuation point", Trigger::actuation_mm, Trigger::set_actuation_mm, (gen2::ACTUATION_MM.0, max_ap), true),
-            ("RT press sensitivity", Trigger::press_mm, Trigger::set_press_mm, gen2::RT_MM, mode != RtMode::Off),
-            ("RT release sensitivity", Trigger::release_mm, Trigger::set_release_mm, gen2::RT_MM, mode != RtMode::Off),
-            ("Top dead zone", Trigger::top_dz_mm, Trigger::set_top_dz_mm, gen2::DEADZONE_MM, true),
-            ("Bottom dead zone", Trigger::bottom_dz_mm, Trigger::set_bottom_dz_mm, gen2::DEADZONE_MM, true),
+            (
+                "Actuation point",
+                "How far down the key goes before it registers. Lower is faster; higher avoids accidental presses.",
+                Trigger::actuation_mm,
+                Trigger::set_actuation_mm,
+                (gen2::ACTUATION_MM.0, max_ap),
+                true,
+            ),
+            ("Press sensitivity", "Rapid Trigger: how far you press again to re-trigger the key.", Trigger::press_mm, Trigger::set_press_mm, gen2::RT_MM, rt),
+            ("Release sensitivity", "Rapid Trigger: how far the key rises before it resets.", Trigger::release_mm, Trigger::set_release_mm, gen2::RT_MM, rt),
+            ("Top dead zone", "Travel at the top of the press that is ignored.", Trigger::top_dz_mm, Trigger::set_top_dz_mm, gen2::DEADZONE_MM, true),
+            (
+                "Bottom dead zone",
+                "Travel at the bottom that is ignored. The actuation point stays above it.",
+                Trigger::bottom_dz_mm,
+                Trigger::set_bottom_dz_mm,
+                gen2::DEADZONE_MM,
+                true,
+            ),
         ];
         let mut edited = false;
-        for (name, get, set, (lo, hi), enabled) in rows {
+        for (name, help, get, set, (lo, hi), enabled) in rows {
             let mut v = get(&first);
             let mixed = sel.iter().any(|&s| (get(&self.triggers[s]) - v).abs() > 0.004);
             let label = if mixed { format!("{name} (mixed)") } else { name.to_string() };
             ui.add_enabled_ui(enabled, |ui| {
-                ui.horizontal(|ui| {
-                    ui.add_sized([150.0, 18.0], egui::Label::new(label));
+                theme::setting(ui, &label, help, |ui| {
                     let r = ui.add(egui::Slider::new(&mut v, lo..=hi.max(lo)).step_by(0.01).fixed_decimals(2).suffix(" mm"));
                     if r.changed() {
                         edited = true;
@@ -1394,6 +1452,9 @@ impl Gen2Panel {
                     }
                 });
             });
+        }
+        if !rt {
+            theme::help(ui, "Rapid Trigger is off, so the two sensitivity values are not used.");
         }
         // Keep actuation inside travel minus bottom dead zone (only after an edit,
         // so selecting a key never changes it by itself).
@@ -1405,26 +1466,48 @@ impl Gen2Panel {
         }
     }
 
+    fn whole_keyboard_card(&mut self, ui: &mut egui::Ui) {
+        theme::section(ui, "Whole keyboard");
+        theme::help(ui, "These apply to every key. Saved with Save to keyboard.");
+        ui.separator();
+        func_combo(
+            ui,
+            &mut self.func,
+            func::DEBOUNCE,
+            func::DEBOUNCE_LEVELS,
+            ("g2_debounce", "Anti-shake level", "Debounce: a higher level filters out more flicker in a key's signal."),
+        );
+        func_switch(ui, &mut self.func, func::ADAPTIVE, "Adaptive Stable", "Helps switches that disconnect or don't trigger because of tolerances.");
+        ui.separator();
+        theme::switch_row(
+            ui,
+            &mut self.live_depth,
+            "Show live key depth",
+            "Press keys on your keyboard to see how far each one goes down. A key turns teal once it passes its actuation point (amber line).",
+        );
+    }
+
     fn keymap_editor(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            ui.label("Layer:");
+        let layer_name = LAYERS[self.layer];
+        theme::setting(ui, "Layer", "Keep an FN key on the Main layer to reach the FN layers.", |ui| {
             for (i, n) in LAYERS.iter().enumerate() {
                 ui.selectable_value(&mut self.layer, i, *n);
             }
             ui.separator();
-            if ui.button(format!("Reset {} layer to factory", LAYERS[self.layer])).clicked() {
+            let reset = ui.button("Reset to factory").on_hover_text(format!("Puts every key and the knob on the {layer_name} layer back to the factory layout."));
+            if reset.clicked() {
                 if let (Some(w), Some(f)) = (self.keymap.get_mut(self.layer), self.snap.as_ref().and_then(|s| s.factory.get(self.layer))) {
                     *w = f.clone();
                 }
             }
         });
+        let layer_name = LAYERS[self.layer];
         let missing = self.slots.iter().filter(|s| s.is_none()).count();
         if missing > 0 {
-            ui.colored_label(pal().unsaved, format!("{missing} keys could not be matched to the keyboard's factory map (shown dark)."));
+            theme::note(ui, format!("{missing} keys could not be matched to the keyboard's factory map (shown dark)."));
         }
-        ui.horizontal(|ui| {
-            ui.label("Knob:");
-            for z in 0..3 {
+        theme::setting(ui, "Knob", "What turning and pressing the knob sends on this layer.", |ui| {
+            for z in [1, 0, 2] {
                 let Some(s) = self.knob[z] else { continue };
                 let a = self.keymap[self.layer][s as usize];
                 let text = format!("{}: {}", ["Press", "Left", "Right"][z], gen2::label(&a));
@@ -1440,7 +1523,8 @@ impl Gen2Panel {
             None => self.selected.iter().next().and_then(|&i| self.slots.get(i).copied().flatten().map(|s| (s as usize, self.layout[i].name.clone()))),
         };
         let Some((slot, title)) = target else {
-            ui.label("Click a key (or the knob), then pick what it should send. Keep an FN key on the Main layer to reach the FN layers.");
+            theme::section(ui, "Selected key");
+            theme::help(ui, "Click a key on the keyboard (or a knob action above), then pick what it should send.");
             return;
         };
         let current = self.keymap[self.layer][slot];
@@ -1453,16 +1537,16 @@ impl Gen2Panel {
                 l
             }
         };
-        ui.horizontal(|ui| {
-            ui.strong(format!("{title} · {} layer", LAYERS[self.layer]));
-            ui.label(format!("sends: {}   (factory: {})", name(&current), name(&factory)));
-            if ui.add_enabled(current != factory, egui::Button::new("Restore")).clicked() {
-                self.keymap[self.layer][slot] = factory;
-            }
-            if ui.add_enabled(current != Action::default(), egui::Button::new("Clear")).clicked() {
+        theme::section_with(ui, &format!("{title} · {layer_name} layer"), |ui| {
+            if ui.add_enabled(current != Action::default(), egui::Button::new("Clear")).on_hover_text("Sends nothing").clicked() {
                 self.keymap[self.layer][slot] = Action::default();
             }
+            if ui.add_enabled(current != factory, egui::Button::new("Restore")).on_hover_text("Back to the factory action").clicked() {
+                self.keymap[self.layer][slot] = factory;
+            }
         });
+        theme::help(ui, format!("Sends {}. Factory: {}. Pick a new action below.", name(&current), name(&factory)));
+        ui.add_space(4.0);
         // The page scrolls; no inner scroll area, so the keyboard keeps its size.
         ui.scope(|ui| {
             for (cat, items) in gen2::picker() {
@@ -1542,22 +1626,22 @@ impl Gen2Panel {
         }
     }
 
+    /// Advanced keys card: layer, the list over all layers, and the Add buttons.
     fn advanced(&mut self, ui: &mut egui::Ui) {
         if self.snap.is_none() {
             return;
         }
         // New keys go on this layer; locked while an editor is open so a key isn't
         // picked on one layer and created on another.
-        ui.horizontal(|ui| {
-            ui.label("Layer:");
-            ui.add_enabled_ui(self.draft.is_none(), |ui| {
+        let editing = self.draft.is_some();
+        theme::setting(ui, "Layer", "New advanced keys and macro keys go on this layer.", |ui| {
+            ui.add_enabled_ui(!editing, |ui| {
                 for (i, n) in LAYERS.iter().enumerate() {
                     ui.selectable_value(&mut self.layer, i, *n);
                 }
             });
-            theme::help(ui, "New advanced keys and macro keys go on this layer.");
         });
-        ui.add_space(4.0);
+        ui.separator();
         let list: Vec<(usize, Advanced)> =
             self.keymap.iter().enumerate().flat_map(|(l, keys)| gen2::find_advanced(keys, &self.mt, &self.tgl, &self.dks).into_iter().map(move |a| (l, a))).collect();
         let name_of = |slot: u8| self.slot_name(slot);
@@ -1565,26 +1649,24 @@ impl Gen2Panel {
             t if t.is_empty() => "nothing".to_string(),
             t => t,
         };
-        ui.label("Advanced keys:");
+        theme::section(ui, "Advanced keys");
+        if list.is_empty() {
+            theme::help(ui, "None yet. Add one below.");
+        }
         let mut remove: Option<(usize, Advanced)> = None;
         let mut new_priority: Option<(u8, u8, u8)> = None;
         let mut edit: Option<(usize, u8, u8)> = None;
-        egui::Grid::new("adv").num_columns(4).spacing([14.0, 6.0]).striped(true).show(ui, |ui| {
-            if list.is_empty() {
-                ui.label("none");
-                ui.end_row();
-            }
+        egui::Grid::new("adv").num_columns(5).spacing([14.0, 6.0]).striped(true).show(ui, |ui| {
             for (layer, adv) in &list {
                 ui.label(theme::hint(LAYERS[*layer]));
                 match adv {
                     Advanced::Pair { kind, a, b, .. } => {
-                        ui.strong(kind.name());
+                        ui.label(theme::strong(kind.name()));
                         ui.label(format!("{} + {}", name_of(*a), name_of(*b)));
                         if *kind == PairKind::Socd {
                             let mut p = self.triggers[*a as usize].priority();
-                            let names = ["Last input wins", "First key wins", "Second key wins"];
-                            egui::ComboBox::from_id_salt(("prio", *a)).selected_text(*names.get(p as usize).unwrap_or(&"?")).show_ui(ui, |ui| {
-                                for (v, n) in names.iter().enumerate() {
+                            egui::ComboBox::from_id_salt(("prio", *a)).selected_text(*SOCD_PRIORITY.get(p as usize).unwrap_or(&"?")).show_ui(ui, |ui| {
+                                for (v, n) in SOCD_PRIORITY.iter().enumerate() {
                                     ui.selectable_value(&mut p, v as u8, *n);
                                 }
                             });
@@ -1596,19 +1678,19 @@ impl Gen2Panel {
                         }
                     }
                     Advanced::Mt { slot, tap, hold, hold_ms, .. } => {
-                        ui.strong("Mod Tap");
+                        ui.label(theme::strong("Mod Tap"));
                         ui.label(format!("{}: tap {} · hold {} ({hold_ms} ms)", name_of(*slot), lbl(tap), lbl(hold)));
                         ui.label("");
                     }
                     Advanced::Tgl { slot, action, .. } => {
-                        ui.strong("Toggle");
+                        ui.label(theme::strong("Toggle"));
                         ui.label(format!("{}: toggles {}", name_of(*slot), lbl(action)));
                         ui.label("");
                     }
                     Advanced::Dks { slot, entry, .. } => {
-                        ui.strong("DKS");
+                        ui.label(theme::strong("DKS"));
                         ui.label(format!("{}: {}", name_of(*slot), dks_summary(&gen2::dks_entry(&self.dks, *entry as usize))));
-                        if ui.add_enabled(self.draft.is_none(), egui::Button::new("Edit").small()).clicked() {
+                        if ui.add_enabled(!editing, egui::Button::new("Edit").small()).clicked() {
                             edit = Some((*layer, *slot, *entry));
                         }
                     }
@@ -1630,84 +1712,116 @@ impl Gen2Panel {
         if let Some((layer, adv)) = remove {
             self.remove_advanced(layer, &adv);
         }
+        if self.draft.is_some() {
+            return; // the editor card below takes over until Create / Cancel
+        }
 
-        ui.add_space(8.0);
+        ui.add_space(6.0);
         ui.separator();
-        ui.horizontal(|ui| {
-            ui.label("Add:");
-            for (kind, name) in [(PairKind::Socd, "SOCD pair"), (PairKind::Rs, "Rappy Snappy"), (PairKind::Oks, "One Key Switch")] {
-                if ui.button(name).clicked() {
-                    self.draft = Some(Draft::Pair { kind, keys: [None, None], priority: 0 });
+        theme::section(ui, "Add an advanced key");
+        let mut new = None;
+        egui::Grid::new("adv_add").num_columns(2).spacing([14.0, 6.0]).show(ui, |ui| {
+            for (draft, name, what) in [
+                (Draft::Pair { kind: PairKind::Socd, keys: [None, None], priority: 0 }, "SOCD pair", "Two keys: the last one pressed wins, or a fixed priority."),
+                (Draft::Pair { kind: PairKind::Rs, keys: [None, None], priority: 0 }, "Rappy Snappy", "Two keys: the one pressed deeper wins."),
+                (Draft::Pair { kind: PairKind::Oks, keys: [None, None], priority: 0 }, "One Key Switch", "Two keys: letting go of one presses the other."),
+                (
+                    Draft::ModTap { key: None, tap: Action::default(), hold: Action { kind: gen2::kind::KEY, code1: 1, code2: 0 }, hold_ms: 200 },
+                    "Mod Tap",
+                    "One key: tap for one action, hold for another.",
+                ),
+                (Draft::Toggle { key: None, action: Action::default() }, "Toggle", "One key: one press holds an action until pressed again."),
+                (Draft::Dks { slot: None, entry: None, dks: Dks::default() }, "DKS", "One key: up to four actions at different depths of one press."),
+            ] {
+                if ui.add(egui::Button::new(name).min_size(Vec2::new(130.0, 24.0))).clicked() {
+                    new = Some(draft);
                 }
-            }
-            if ui.button("Mod Tap").clicked() {
-                self.draft = Some(Draft::ModTap { key: None, tap: Action::default(), hold: Action { kind: gen2::kind::KEY, code1: 1, code2: 0 }, hold_ms: 200 });
-            }
-            if ui.button("Toggle").clicked() {
-                self.draft = Some(Draft::Toggle { key: None, action: Action::default() });
-            }
-            if ui.button("DKS").clicked() {
-                self.draft = Some(Draft::Dks { slot: None, entry: None, dks: Dks::default() });
+                theme::help(ui, what);
+                ui.end_row();
             }
         });
-        let Some(mut draft) = self.draft else {
-            theme::help(ui, "SOCD: two keys, the last one pressed wins (or a fixed priority). Rappy Snappy: two keys, the one pressed deeper wins. One Key Switch: two keys, letting go of one presses the other.");
-            theme::help(ui, "Mod Tap: tap for one action, hold for another. Toggle: one press holds an action until pressed again. DKS: up to four actions at different depths of one key press.");
-            return;
-        };
+        if new.is_some() {
+            self.draft = new;
+        }
+    }
+
+    /// Editor card for the advanced key being created (or the DKS key being edited).
+    fn draft_editor(&mut self, ui: &mut egui::Ui) {
+        let Some(mut draft) = self.draft else { return };
+        let layer = LAYERS[self.layer];
         let key_name = |i: Option<usize>| i.map_or("click a key".to_string(), |i| self.layout[i].name.clone());
         let slot_name = |s: Option<usize>| s.map_or("click a key".to_string(), |s| self.slot_name(s as u8));
-        let mut cancel = false;
+        let (title, help) = match &draft {
+            Draft::Pair { kind: PairKind::Socd, .. } => (format!("New SOCD pair on {layer}"), "Click two keys on the keyboard above. With both held, the priority below decides which one counts."),
+            Draft::Pair { kind: PairKind::Rs, .. } => (
+                format!("New Rappy Snappy pair on {layer}"),
+                "Click two keys on the keyboard above. With both down, only the one pressed deeper counts; both pressed all the way count together. Key travel settings stay as they are.",
+            ),
+            Draft::Pair { kind: PairKind::Oks, .. } => (format!("New One Key Switch pair on {layer}"), "Click two keys on the keyboard above. Letting go of one key presses the other for you."),
+            Draft::ModTap { .. } => (format!("New Mod Tap key on {layer}"), "Click a key on the keyboard above. A short tap sends one action; holding it longer than the hold time sends the other."),
+            Draft::Toggle { .. } => (format!("New Toggle key on {layer}"), "Click a key on the keyboard above. One press holds the action down until the key is pressed again."),
+            Draft::Dks { entry: Some(_), .. } => (format!("Edit DKS on {layer}"), "Up to four actions at different depths of one key press."),
+            Draft::Dks { .. } => (format!("New DKS key on {layer}"), "Click a key on the keyboard above. Up to four actions at different depths of one key press."),
+            Draft::MacroBind { id } => (format!("Put M{} on a key ({layer})", id + 1), "Click the key that should play the macro."),
+        };
+        theme::section(ui, &title);
+        theme::help(ui, help);
+        ui.separator();
         let create = match &mut draft {
             Draft::Pair { kind, keys, priority } => {
-                ui.label(format!("{}: {} + {}", kind.name(), key_name(keys[0]), key_name(keys[1])));
-                match kind {
-                    PairKind::Socd => {
-                        ui.horizontal(|ui| {
-                            ui.label("Priority");
-                            for (v, n) in ["Last input wins", "First key wins", "Second key wins"].iter().enumerate() {
-                                ui.selectable_value(priority, v as u8, *n);
-                            }
-                        });
-                    }
-                    PairKind::Rs => theme::help(ui, "With both keys down, only the one pressed deeper counts; both pressed all the way count together. Key travel settings stay as they are."),
-                    PairKind::Oks => theme::help(ui, "Letting go of one key presses the other for you."),
+                theme::setting(ui, "Keys", "Click a picked key again to drop it.", |ui| {
+                    ui.label(theme::strong(format!("{} + {}", key_name(keys[0]), key_name(keys[1]))));
+                });
+                if *kind == PairKind::Socd {
+                    theme::setting(ui, "Priority", "Which key counts while both are held.", |ui| {
+                        for (v, n) in SOCD_PRIORITY.iter().enumerate() {
+                            ui.selectable_value(priority, v as u8, *n);
+                        }
+                    });
                 }
-                ui.add_enabled(keys.iter().all(Option::is_some), egui::Button::new("Create")).clicked()
+                Some(("Create", keys.iter().all(Option::is_some)))
             }
             Draft::Dks { slot, entry, dks } => {
-                ui.label(format!("DKS on {}", slot_name(*slot)));
+                theme::setting(ui, "Key", if entry.is_some() { "Remove the DKS key to move it to another key." } else { "" }, |ui| {
+                    ui.label(theme::strong(slot_name(*slot)));
+                });
                 dks_editor(ui, dks);
-                let ready = slot.is_some() && !dks.is_empty();
-                ui.add_enabled(ready, egui::Button::new(if entry.is_some() { "Apply" } else { "Create" })).clicked()
+                Some((if entry.is_some() { "Apply" } else { "Create" }, slot.is_some() && !dks.is_empty()))
             }
             Draft::ModTap { key, tap, hold, hold_ms } => {
-                ui.label(format!("Mod Tap on {}", key_name(*key)));
-                action_combo(ui, "mt_tap", "Tap", tap);
-                action_combo(ui, "mt_hold", "Hold", hold);
-                ui.horizontal(|ui| {
-                    ui.add_sized([60.0, 18.0], egui::Label::new("Hold time"));
+                theme::setting(ui, "Key", "", |ui| {
+                    ui.label(theme::strong(key_name(*key)));
+                });
+                theme::setting(ui, "Tap", "Sent on a short tap. Starts as what the key sends now.", |ui| action_pick(ui, "mt_tap", tap));
+                theme::setting(ui, "Hold", "Sent while the key is held.", |ui| action_pick(ui, "mt_hold", hold));
+                ui.spacing_mut().slider_width = theme::setting_slider_width(ui);
+                theme::setting(ui, "Hold time", "How long a press lasts before it counts as a hold.", |ui| {
                     ui.add(egui::Slider::new(hold_ms, 100..=1000).step_by(10.0).suffix(" ms"));
                 });
-                ui.add_enabled(key.is_some(), egui::Button::new("Create")).clicked()
+                Some(("Create", key.is_some()))
             }
             Draft::Toggle { key, action } => {
-                ui.label(format!("Toggle on {}", key_name(*key)));
-                action_combo(ui, "tgl_action", "Toggles", action);
-                ui.add_enabled(key.is_some(), egui::Button::new("Create")).clicked()
+                theme::setting(ui, "Key", "", |ui| {
+                    ui.label(theme::strong(key_name(*key)));
+                });
+                theme::setting(ui, "Toggles", "Starts as what the key sends now.", |ui| action_pick(ui, "tgl_action", action));
+                Some(("Create", key.is_some()))
             }
-            Draft::MacroBind { id } => {
-                ui.label(format!("Click the key that should play M{}.", *id + 1));
-                false
-            }
+            Draft::MacroBind { .. } => None,
         };
-        if ui.button("Cancel").clicked() {
-            cancel = true;
-        }
+        ui.add_space(6.0);
+        let mut cancel = false;
+        let mut confirmed = false;
+        ui.horizontal(|ui| {
+            if let Some((text, ready)) = create {
+                confirmed = theme::primary_button(ui, ready, text).clicked();
+            }
+            cancel = ui.button("Cancel").clicked();
+        });
         self.draft = Some(draft);
         if cancel {
             self.draft = None;
-        } else if create {
+        } else if confirmed {
             match self.create_advanced(draft) {
                 Ok(msg) => {
                     self.set_status(format!("{msg} — Save to keyboard to apply"), false);
@@ -1823,8 +1937,8 @@ impl Gen2Panel {
     /// Macros: list, recorder / editor, and putting a macro on a key.
     /// Macros card. Returns whether a macro name changed.
     fn macros_card(&mut self, ui: &mut egui::Ui, names: &mut Vec<store::MacroName>) -> bool {
-        theme::section(ui, "Macros");
         if self.macros.is_empty() {
+            theme::section(ui, "Macros");
             theme::help(ui, "This keyboard didn't answer when asked for its macros, so they are switched off here.");
             return false;
         }
@@ -1832,6 +1946,17 @@ impl Gen2Panel {
         let mut names_changed = false;
         let total: usize = self.macros.iter().map(Vec::len).sum();
         let (mut edit, mut bind, mut unbind, mut delete) = (None, None, None, None);
+        let free_id = (0..gen2::MACROS).find(|&id| self.macros[id].is_empty());
+        let editing = self.macro_edit.is_some();
+        theme::section_with(ui, "Macros", |ui| {
+            if ui.add_enabled(free_id.is_some() && !editing, egui::Button::new("New macro")).clicked() {
+                edit = free_id;
+            }
+        });
+        theme::help(ui, "A macro is a list of key presses the keyboard plays back when you press the key it is on. Macros belong to the profile; their names are kept on this PC.");
+        if total > 0 {
+            ui.separator();
+        }
         egui::Grid::new("macros").num_columns(7).spacing([14.0, 6.0]).striped(true).show(ui, |ui| {
             for (id, events) in self.macros.iter().enumerate().filter(|(_, e)| !e.is_empty()) {
                 let keys: Vec<String> = self
@@ -1861,13 +1986,6 @@ impl Gen2Panel {
                 ui.end_row();
             }
         });
-        if total == 0 {
-            ui.label("No macros yet.");
-        }
-        let free_id = (0..gen2::MACROS).find(|&id| self.macros[id].is_empty());
-        if ui.add_enabled(free_id.is_some() && self.macro_edit.is_none(), egui::Button::new("New macro")).clicked() {
-            edit = free_id;
-        }
         // "M3 Copy" / "M3".
         let title = |names: &[store::MacroName], id: usize| match store::macro_name(names, &board, profile, id as u8) {
             Some(n) => format!("M{} {n}", id + 1),
@@ -1895,7 +2013,6 @@ impl Gen2Panel {
         }
 
         let Some(mut e) = self.macro_edit.take() else {
-            theme::help(ui, "A macro is a list of key presses the keyboard plays back when you press the key it is on. Macros belong to the profile; their names are kept on this PC.");
             return names_changed;
         };
         ui.add_space(6.0);
@@ -1937,19 +2054,17 @@ impl Gen2Panel {
         // outside the widget ranges never turn into phantom edits.
         let effect = func::get(&self.func, func::LIGHT_EFFECT);
         let bright = func::get(&self.func, func::LIGHT_BRIGHTNESS);
-        if effect == 0 {
-            self.custom_colors(ui);
-            ui.separator();
-        }
+        theme::section(ui, "Effect");
+        theme::help(ui, "Lighting belongs to the current profile.");
+        ui.separator();
         let mut on = bright > 0;
-        if ui.checkbox(&mut on, "Backlight").changed() {
+        if theme::switch_row(ui, &mut on, "Backlight", "Turns the keyboard's lights on or off.").changed() {
             func::set(&mut self.func, func::LIGHT_BRIGHTNESS, if on { self.last_brightness.max(10) } else { 0 });
         }
         if !on {
             return;
         }
-        ui.add_space(4.0);
-        ui.label("Effect");
+        ui.separator();
         ui.horizontal_wrapped(|ui| {
             for (i, n) in gen2::EFFECTS.iter().enumerate() {
                 if ui.add(egui::Button::new(*n).selected(effect == i as u8).min_size(Vec2::new(86.0, 26.0))).clicked() && effect != i as u8 {
@@ -1957,11 +2072,13 @@ impl Gen2Panel {
                 }
             }
         });
+        if effect == 0 {
+            theme::help(ui, "Custom: every key shows the colour painted on it in Custom colours above.");
+        }
         ui.add_space(6.0);
-        ui.spacing_mut().slider_width = 260.0;
+        ui.spacing_mut().slider_width = theme::setting_slider_width(ui);
         let mut b = bright;
-        ui.horizontal(|ui| {
-            ui.add_sized([120.0, 18.0], egui::Label::new("Brightness"));
+        theme::setting(ui, "Brightness", "How bright the lights are.", |ui| {
             if ui.add(egui::Slider::new(&mut b, 1..=100)).changed() {
                 func::set(&mut self.func, func::LIGHT_BRIGHTNESS, b);
                 self.last_brightness = b;
@@ -1969,8 +2086,7 @@ impl Gen2Panel {
         });
         if gen2::effect_has_speed(effect) {
             let mut speed = 4u8.saturating_sub(func::get(&self.func, func::LIGHT_SPEED_INV)).min(4);
-            ui.horizontal(|ui| {
-                ui.add_sized([120.0, 18.0], egui::Label::new("Speed"));
+            theme::setting(ui, "Speed", "How fast the effect moves.", |ui| {
                 if ui.add(egui::Slider::new(&mut speed, 0..=4)).changed() {
                     func::set(&mut self.func, func::LIGHT_SPEED_INV, 4 - speed);
                 }
@@ -1978,8 +2094,7 @@ impl Gen2Panel {
         }
         if let Some(choices) = gen2::effect_directions(effect) {
             let mut dir = func::get(&self.func, func::LIGHT_DIRECTION);
-            ui.horizontal(|ui| {
-                ui.add_sized([120.0, 18.0], egui::Label::new("Direction"));
+            theme::setting(ui, "Direction", "Which way the effect moves.", |ui| {
                 for (value, name) in choices {
                     if ui.selectable_value(&mut dir, value, name).changed() {
                         func::set(&mut self.func, func::LIGHT_DIRECTION, value);
@@ -1988,19 +2103,16 @@ impl Gen2Panel {
             });
         }
         if gen2::effect_has_color(effect) {
-            ui.horizontal(|ui| {
-                ui.add_sized([120.0, 18.0], egui::Label::new("Colour"));
+            let multi = func::get(&self.func, func::LIGHT_MULTI) != 0;
+            let help = if multi { "Now multi-colour. Picking a colour switches the effect to that one colour." } else { "Colour of the effect." };
+            theme::setting(ui, "Colour", help, |ui| {
                 let mut rgb = [self.func[14], self.func[15], self.func[16]];
                 if ui.color_edit_button_srgb(&mut rgb).changed() {
                     self.func[14..17].copy_from_slice(&rgb);
                     func::set(&mut self.func, func::LIGHT_MULTI, 0); // official: picking a colour = single colour
                 }
-                if func::get(&self.func, func::LIGHT_MULTI) != 0 {
-                    theme::help(ui, "(currently multi-colour; picking a colour switches to single colour)");
-                }
             });
         }
-        theme::help(ui, "Changes apply to the keyboard right away (current profile).");
     }
 
     /// "Custom" effect: per-key colours painted on the keyboard above.
@@ -2016,21 +2128,23 @@ impl Gen2Panel {
             [255, 255, 255],
             [0, 0, 0],
         ];
-        ui.horizontal_wrapped(|ui| {
-            // Fill / Undo first: the colour picker popup opens down-right of
-            // its button and must not cover them.
-            if ui.button("Fill all keys").clicked() {
-                let all = vec![Some(self.paint); self.layout.len()];
-                self.set_key_colors("fill all keys", &all);
-            }
+        // Fill / Undo in the title row: colour picker popups open below their
+        // buttons and must not cover them.
+        theme::section_with(ui, "Custom colours", |ui| {
             if ui.add_enabled(!self.color_undo.is_empty(), egui::Button::new("Undo")).clicked() {
                 if let Some(prev) = self.color_undo.pop() {
                     self.colors = prev;
                     self.light_due = Some(Instant::now());
                 }
             }
-            ui.separator();
-            ui.label("Brush");
+            if ui.button("Fill all keys").on_hover_text("Paint every key with the brush colour").clicked() {
+                let all = vec![Some(self.paint); self.layout.len()];
+                self.set_key_colors("fill all keys", &all);
+            }
+        });
+        theme::help(ui, "Click or drag across keys to paint, right-click a key to pick its colour. Undo steps back one change.");
+        ui.separator();
+        theme::setting(ui, "Brush", "The colour you paint with.", |ui| {
             ui.color_edit_button_srgb(&mut self.paint);
             for c in SWATCHES {
                 let (r, p) = ui.allocate_exact_size(Vec2::splat(22.0), Sense::click());
@@ -2042,61 +2156,63 @@ impl Gen2Panel {
                 }
             }
         });
-        ui.add_space(4.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Highlight");
-            for g in pattern::Group::ALL {
-                if ui.button(g.label()).on_hover_text("Paint these keys with the brush colour").clicked() {
-                    let per_key: Vec<_> = self.layout.iter().map(|k| g.contains(k.code).then_some(self.paint)).collect();
-                    self.set_key_colors(g.label(), &per_key);
-                }
-            }
-        });
-        ui.horizontal_wrapped(|ui| {
-            ui.label("Pattern");
-            egui::ComboBox::from_id_salt("g2pattern_dir").selected_text(self.pattern_dir.label()).show_ui(ui, |ui| {
-                for d in pattern::Direction::ALL {
-                    ui.selectable_value(&mut self.pattern_dir, d, d.label());
+        theme::setting(ui, "Highlight", "Paints a group of keys with the brush colour.", |ui| {
+            ui.horizontal_wrapped(|ui| {
+                for g in pattern::Group::ALL {
+                    if ui.button(g.label()).clicked() {
+                        let per_key: Vec<_> = self.layout.iter().map(|k| g.contains(k.code).then_some(self.paint)).collect();
+                        self.set_key_colors(g.label(), &per_key);
+                    }
                 }
             });
-            let centres: Vec<[f32; 2]> = self.layout.iter().map(|k| [k.x + k.w / 2.0, k.y + k.h / 2.0]).collect();
-            let mut generated = None;
-            if ui.button("Gradient").on_hover_text("Brush colour to the second colour").clicked() {
-                generated = Some(("gradient", pattern::gradient(&centres, self.pattern_dir, self.paint, self.paint2)));
-            }
-            ui.color_edit_button_srgb(&mut self.paint2).on_hover_text("Second colour (gradient, stripes, checker)");
-            if ui.button("Stripes").on_hover_text("Brush / second colour: rows, columns, diagonals or rings").clicked() {
-                generated = Some(("stripes", pattern::stripes(&centres, self.pattern_dir, self.paint, self.paint2)));
-            }
-            if ui.button("Checker").on_hover_text("Brush / second colour checkerboard").clicked() {
-                generated = Some(("checker", pattern::checker(&centres, self.paint, self.paint2)));
-            }
-            ui.separator();
-            if ui.button("Rainbow").clicked() {
-                generated = Some(("rainbow", pattern::rainbow(&centres, self.pattern_dir, 5.0 / 6.0, 0.0)));
-            }
-            if ui.button("Random").clicked() {
-                let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
-                generated = Some(("random", pattern::random(centres.len(), seed)));
-            }
-            ui.separator();
+        });
+        let centres: Vec<[f32; 2]> = self.layout.iter().map(|k| [k.x + k.w / 2.0, k.y + k.h / 2.0]).collect();
+        let mut generated = None;
+        theme::setting(ui, "Second colour", "Gradient, Stripes and Checker use the brush and this colour.", |ui| {
+            ui.color_edit_button_srgb(&mut self.paint2);
+        });
+        theme::setting(ui, "Pattern", "Repaints every key at once, along the direction picked here.", |ui| {
+            ui.horizontal_wrapped(|ui| {
+                egui::ComboBox::from_id_salt("g2pattern_dir").selected_text(self.pattern_dir.label()).show_ui(ui, |ui| {
+                    for d in pattern::Direction::ALL {
+                        ui.selectable_value(&mut self.pattern_dir, d, d.label());
+                    }
+                });
+                if ui.button("Gradient").on_hover_text("Brush colour to the second colour").clicked() {
+                    generated = Some(("gradient", pattern::gradient(&centres, self.pattern_dir, self.paint, self.paint2)));
+                }
+                if ui.button("Stripes").on_hover_text("Brush / second colour: rows, columns, diagonals or rings").clicked() {
+                    generated = Some(("stripes", pattern::stripes(&centres, self.pattern_dir, self.paint, self.paint2)));
+                }
+                if ui.button("Checker").on_hover_text("Brush / second colour checkerboard").clicked() {
+                    generated = Some(("checker", pattern::checker(&centres, self.paint, self.paint2)));
+                }
+                if ui.button("Rainbow").clicked() {
+                    generated = Some(("rainbow", pattern::rainbow(&centres, self.pattern_dir, 5.0 / 6.0, 0.0)));
+                }
+                if ui.button("Random").clicked() {
+                    let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(1, |d| d.as_nanos() as u64);
+                    generated = Some(("random", pattern::random(centres.len(), seed)));
+                }
+            });
+        });
+        theme::setting(ui, "Palette", "Three-colour blend along the pattern direction.", |ui| {
             let name = |i: usize| pattern::PRESETS.get(i).map_or("?", |p| p.0);
             egui::ComboBox::from_id_salt("g2palette").selected_text(name(self.palette)).show_ui(ui, |ui| {
                 for i in 0..pattern::PRESETS.len() {
                     ui.selectable_value(&mut self.palette, i, name(i));
                 }
             });
-            if ui.button("Apply palette").on_hover_text("Three-colour blend along the direction").clicked() {
+            if ui.button("Apply palette").clicked() {
                 if let Some((_, stops)) = pattern::PRESETS.get(self.palette) {
                     generated = Some(("palette", pattern::palette(&centres, self.pattern_dir, stops)));
                 }
             }
-            if let Some((what, colors)) = generated {
-                let per_key: Vec<_> = colors.into_iter().map(Some).collect();
-                self.set_key_colors(what, &per_key);
-            }
         });
-        theme::help(ui, "Custom effect: click or drag across keys to paint, right-click a key to pick its colour. Highlight / Pattern repaint keys at once; Undo steps back one change.");
+        if let Some((what, colors)) = generated {
+            let per_key: Vec<_> = colors.into_iter().map(Some).collect();
+            self.set_key_colors(what, &per_key);
+        }
     }
 
     /// Sets colours per layout key (`None` = leave as is) as one undo step,
@@ -2120,56 +2236,49 @@ impl Gen2Panel {
         }
     }
 
+    /// Settings › Keyboard (anti-shake and Adaptive Stable are on Performance › Whole keyboard).
     fn settings(&mut self, ui: &mut egui::Ui) {
-        let combo = |ui: &mut egui::Ui, id: &str, name: &str, func_block: &mut Vec<u8>, field: func::Field, opts: &[(u8, &str)]| {
-            let mut v = func::get(func_block, field);
-            let before = v;
-            ui.horizontal(|ui| {
-                ui.add_sized([150.0, 18.0], egui::Label::new(name));
-                let cur = opts.iter().find(|o| o.0 == v).map_or(format!("({v})"), |o| o.1.to_string());
-                egui::ComboBox::from_id_salt(id).selected_text(cur).show_ui(ui, |ui| {
-                    for (val, label) in opts {
-                        ui.selectable_value(&mut v, *val, *label);
-                    }
-                });
-            });
-            if v != before {
-                func::set(func_block, field, v);
-            }
-        };
-        combo(ui, "g2_poll", "Polling rate", &mut self.func, func::POLLING, func::POLLING_RATES);
-        theme::help(ui, "Changing the polling rate makes the keyboard reconnect.");
-        combo(ui, "g2_tick", "Tick rate", &mut self.func, func::TICK, func::TICK_RATES);
-        combo(ui, "g2_debounce", "Anti-shake level", &mut self.func, func::DEBOUNCE, func::DEBOUNCE_LEVELS);
-        ui.add_space(6.0);
+        func_combo(ui, &mut self.func, func::POLLING, func::POLLING_RATES, ("g2_poll", "Polling rate", "Changing the polling rate makes the keyboard reconnect."));
+        func_combo(ui, &mut self.func, func::TICK, func::TICK_RATES, ("g2_tick", "Tick rate", ""));
         for (field, name, help) in [
-            (func::ADAPTIVE, "Adaptive Stable", "Helps switches that disconnect or don't trigger because of tolerances."),
-            (func::LOCK_WIN, "Lock Win key", ""),
-            (func::LOCK_ALT_TAB, "Lock Alt+Tab", ""),
-            (func::LOCK_ALT_F4, "Lock Alt+F4", ""),
+            (func::LOCK_WIN, "Lock Win key", "The Win key does nothing while this is on."),
+            (func::LOCK_ALT_TAB, "Lock Alt+Tab", "Alt+Tab does nothing while this is on."),
+            (func::LOCK_ALT_F4, "Lock Alt+F4", "Alt+F4 does nothing while this is on."),
         ] {
-            let mut on = func::get(&self.func, field) != 0;
-            let r = ui.checkbox(&mut on, name);
-            if r.changed() {
-                func::set(&mut self.func, field, on as u8);
-            }
-            if !help.is_empty() {
-                r.on_hover_text(help);
-            }
+            func_switch(ui, &mut self.func, field, name, help);
         }
         ui.add_space(6.0);
         theme::help(ui, "Factory reset, calibration and firmware update are intentionally not available here.");
     }
 }
 
-/// Picker for one action (same catalog as the Keymap tab).
-fn action_combo(ui: &mut egui::Ui, id: &str, name: &str, action: &mut Action) {
-    ui.horizontal(|ui| {
-        ui.add_sized([60.0, 18.0], egui::Label::new(name));
-        action_pick(ui, id, action);
+/// Settings-block field picked from a list, as a setting row. Written back only
+/// when changed, so values outside the list never turn into phantom edits.
+fn func_combo(ui: &mut egui::Ui, block: &mut [u8], field: func::Field, opts: &[(u8, &str)], (id, name, help): (&str, &str, &str)) {
+    let mut v = func::get(block, field);
+    let before = v;
+    theme::setting(ui, name, help, |ui| {
+        let cur = opts.iter().find(|o| o.0 == v).map_or(format!("({v})"), |o| o.1.to_string());
+        egui::ComboBox::from_id_salt(id).selected_text(cur).show_ui(ui, |ui| {
+            for (val, label) in opts {
+                ui.selectable_value(&mut v, *val, *label);
+            }
+        });
     });
+    if v != before {
+        func::set(block, field, v);
+    }
 }
 
+/// On/off settings-block bit as a switch row.
+fn func_switch(ui: &mut egui::Ui, block: &mut [u8], field: func::Field, name: &str, help: &str) {
+    let mut on = func::get(block, field) != 0;
+    if theme::switch_row(ui, &mut on, name, help).changed() {
+        func::set(block, field, on as u8);
+    }
+}
+
+/// Picker for one action (same catalog as the Keymap tab).
 fn action_pick(ui: &mut egui::Ui, id: impl std::hash::Hash, action: &mut Action) {
     let text = match gen2::label(action) {
         t if t.is_empty() => "nothing".to_string(),
@@ -2302,17 +2411,21 @@ fn macro_record(ui: &egui::Ui, e: &mut MacroEdit, room: usize) {
 
 /// Macro editor. Returns `Some(true)` on Apply, `Some(false)` on Cancel.
 fn macro_editor(ui: &mut egui::Ui, e: &mut MacroEdit, room: usize) -> Option<bool> {
-    ui.horizontal(|ui| {
-        ui.label(format!("Macro M{}", e.id + 1));
-        ui.add(egui::TextEdit::singleline(&mut e.name).hint_text("name (optional)").char_limit(store::MACRO_NAME_MAX).desired_width(220.0));
+    theme::section(ui, &format!("Edit M{}", e.id + 1));
+    theme::help(ui, "Record your typing, or build the list of steps by hand.");
+    ui.add_space(4.0);
+    theme::setting(ui, "Name", "Optional. Kept on this PC; the keyboard only knows the M number.", |ui| {
+        ui.add(egui::TextEdit::singleline(&mut e.name).hint_text("name").char_limit(store::MACRO_NAME_MAX).desired_width(220.0));
     });
-    ui.horizontal(|ui| {
+    theme::setting(ui, "Record", "Without Keep my timing every step waits 50 ms.", |ui| {
         if ui.button(if e.recording { "Stop recording" } else { "Record" }).clicked() {
             e.recording = !e.recording;
             e.last_event = None;
             e.mods = ui.input(|i| i.modifiers);
         }
         ui.checkbox(&mut e.timed, "Keep my timing");
+    });
+    theme::setting(ui, "Steps", "Add key puts a press and a release of A at the end; change both in the list.", |ui| {
         ui.add_enabled_ui(!e.recording, |ui| {
             if ui.add_enabled(e.events.len() + 2 <= room, egui::Button::new("Add key")).clicked() {
                 if let Some(last) = e.events.last_mut() {
@@ -2329,9 +2442,8 @@ fn macro_editor(ui: &mut egui::Ui, e: &mut MacroEdit, room: usize) -> Option<boo
     if e.recording {
         macro_record(ui, e, room);
         theme::note(ui, "Recording — type the keys now. Win and the right-hand Ctrl / Shift / Alt can't be told apart here; change them in the list afterwards.");
-    } else {
-        theme::help(ui, "Record your typing, or build the list by hand. Without Keep my timing every step waits 50 ms.");
     }
+    ui.add_space(4.0);
     let mut remove = None;
     let count = e.events.len();
     egui::Grid::new("macro_steps").num_columns(5).spacing([10.0, 4.0]).show(ui, |ui| {
@@ -2372,11 +2484,12 @@ fn macro_editor(ui: &mut egui::Ui, e: &mut MacroEdit, room: usize) -> Option<boo
     if !stuck.is_empty() {
         theme::note(ui, format!("Press and Release don't pair up for: {}", stuck.join(", ")));
     }
-    ui.label(theme::hint(&format!("{} steps (room for {room})", e.events.len())));
+    theme::help(ui, format!("{} steps (room for {room})", e.events.len()));
+    ui.add_space(6.0);
     let mut out = None;
     ui.horizontal(|ui| {
         let ok = !e.recording && !e.events.is_empty() && e.events.len() <= room && stuck.is_empty();
-        if ui.add_enabled(ok, egui::Button::new("Apply")).clicked() {
+        if theme::primary_button(ui, ok, "Apply").clicked() {
             out = Some(true);
         }
         if ui.button("Cancel").clicked() {
@@ -2423,19 +2536,24 @@ fn dks_summary(d: &Dks) -> String {
 /// DKS editor: the four stage depths, then one row per action with what it
 /// does at each stage. Choosing a longer hold clears the stages it passes.
 fn dks_editor(ui: &mut egui::Ui, dks: &mut Dks) {
-    ui.horizontal(|ui| {
-        for (i, name) in DKS_STAGES.iter().enumerate() {
-            let (lo, hi) = gen2::dks_point_range(&dks.points, i);
-            let mut mm = f32::from(dks.points[i]) / 10.0;
-            ui.label(*name);
-            let drag = egui::DragValue::new(&mut mm).range(f32::from(lo) / 10.0..=f32::from(hi) / 10.0).speed(0.02).fixed_decimals(1).suffix(" mm");
-            if ui.add(drag).changed() {
-                dks.points[i] = ((mm * 10.0).round() as u8).clamp(lo, hi);
+    theme::setting(ui, "Stage depths", "Press and Bottom on the way down, Release and Top on the way back up.", |ui| {
+        ui.horizontal_wrapped(|ui| {
+            for (i, name) in DKS_STAGES.iter().enumerate() {
+                let (lo, hi) = gen2::dks_point_range(&dks.points, i);
+                let mut mm = f32::from(dks.points[i]) / 10.0;
+                ui.label(*name);
+                let drag = egui::DragValue::new(&mut mm).range(f32::from(lo) / 10.0..=f32::from(hi) / 10.0).speed(0.02).fixed_decimals(1).suffix(" mm");
+                if ui.add(drag).changed() {
+                    dks.points[i] = ((mm * 10.0).round() as u8).clamp(lo, hi);
+                }
+                ui.add_space(6.0);
             }
-            ui.add_space(6.0);
-        }
+        });
     });
-    theme::help(ui, "Depth of each stage: Press and Bottom on the way down, Release and Top on the way back up.");
+    ui.add_space(4.0);
+    ui.label(theme::strong("Actions"));
+    theme::help(ui, "Tap presses and lets go at that stage. Hold keeps the action down until the stage named; a longer hold clears the stages it passes.");
+    ui.add_space(2.0);
     egui::Grid::new("dks_binds").num_columns(6).spacing([10.0, 6.0]).show(ui, |ui| {
         ui.label("");
         for name in DKS_STAGES {
@@ -2473,7 +2591,6 @@ fn dks_editor(ui: &mut egui::Ui, dks: &mut Dks) {
             ui.end_row();
         }
     });
-    theme::help(ui, "Tap presses and lets go at that stage. Hold keeps the action down until the stage named.");
 }
 
 /// Draws `text` shrunk (down to 8 px, then wrapped) to fit `max_w`.

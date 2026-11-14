@@ -165,3 +165,10 @@
 - `Gen2Panel::body(ui, names) -> bool` (ui.rs persists on change); `macros_card` name column, titles "M3 Copy" in status lines; `MacroEdit.name` text field; name-only Apply = "renamed", no keyboard write; Delete removes the name. Back-up `Kraken.macro_names` (serde default), merged on import.
 - Verified: demo XTest (editor name "Copy" -> Apply -> list column + state.json entry). Tests / clippy clean.
 
+## 2026-11-14 (gen-2 UI overhaul, branch `dev`)
+- `dev` pushed to GitHub (user OK): rebuilt in the cloud from `kraken-dev.bundle` (f62ce98) + the user's docs commit 112fdfd (loose objects staged, same hash).
+- theme: `section_with` (title + right-aligned controls), `setting_slider_width`.
+- ui2 Performance: `travel_card` ("Selected keys": All / WASD / None, key list + switch type, RT mode Off / On / Continuous, AP / press / release / top DZ / bottom DZ as `theme::setting` rows with helper text) + `whole_keyboard_card` (anti-shake, Adaptive Stable, live key depth); side by side above 860 px, stacked below. `WHOLE_KEYBOARD` fields mark Performance dirty instead of Settings.
+- ui2: keyboard legend line per page (as gen-1); Keymap: Layer / Knob setting rows (knob L / P / R order), selected-key header with Restore / Clear; Advanced: Layer row, list, "Add an advanced key" grid with one-line descriptions, editor in its own card (`draft_editor`: title, help, Keys / Priority / Tap / Hold / Hold time / Toggles rows, primary Create / Apply + Cancel); DKS editor: Stage depths row + Actions grid; Macros: New macro in the title row, editor with Name / Record / Steps rows, primary Apply; Lighting: Custom colours card (Fill / Undo in title row; Brush, Highlight, Second colour, Pattern, Palette rows) above the Effect card (Backlight switch, effect grid, Brightness / Speed / Direction / Colour rows); Settings: `func_combo` / `func_switch` rows. `action_combo` removed.
+- Demo: `--g2draft=socd|mt|tgl` added.
+- Verified: xvfb screenshots of every gen-2 page and editor (Dark Grey + Black-Plumb, 1180 and 960 wide); tests dd-proto 49, app 18; clippy both configs (`check-win` caught the unused `action_combo`). Hardware untested.

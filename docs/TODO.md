@@ -91,6 +91,8 @@
 - [ ] Check both themes on every page (Settings > Appearance), window at 1180x760 and minimum 960x600.
 - [x] Same keyboard size on every page, both boards (v0.10.2).
 - [x] Lighting presets, both boards (v0.10.2, cloud-tested; hardware untested).
-- [ ] Gen-2 Performance: same Selected keys / Whole keyboard cards as gen-1.
-- [ ] Restyle Keymap / Advanced / Lighting editors (setting rows, helper text).
+- [x] Gen-2 Performance: same Selected keys / Whole keyboard cards as gen-1 (2026-11-14, `dev`). Anti-shake level + Adaptive Stable moved from Settings to Whole keyboard; polling, tick rate, key locks stay in Settings.
+- [x] Restyle gen-2 Keymap / Advanced / Lighting editors (setting rows, helper text, primary Create / Apply; 2026-11-14, `dev`, demo-tested both themes, 1180 and 960 wide).
+- [ ] Hardware (A75 Ultra 2025, `dev`): Performance cards (edit, Save, Reload), Whole keyboard anti-shake / Adaptive Stable save, Advanced editors (SOCD / RS / OKS / MT / Toggle / DKS create + DKS edit), macro editor, Custom colours tools, Settings rows.
+- [ ] Gen-1 Keymap / Advanced / Lighting editors: same restyle (not done; gen-1 Performance already has the cards).
 - [ ] Optional: load the user's theme JSON directly instead of the built-in Black-Plumb copy.

@@ -386,6 +386,22 @@ pub fn section(ui: &mut Ui, title: &str) {
     ui.label(RichText::new(title).text_style(TextStyle::Name("section".into())).color(pal().text));
 }
 
+/// Section title with controls on the right of the same row (added right to
+/// left: the first control ends up rightmost).
+pub fn section_with(ui: &mut Ui, title: &str, right: impl FnOnce(&mut Ui)) {
+    ui.horizontal(|ui| {
+        section(ui, title);
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), right);
+    });
+}
+
+/// Width for sliders in `setting` rows: what is left after the label column
+/// and the value box.
+pub fn setting_slider_width(ui: &Ui) -> f32 {
+    let w = ui.available_width();
+    (w - (w * 0.42).clamp(170.0, 340.0) - 110.0).clamp(110.0, 360.0)
+}
+
 /// Placeholder text for empty text fields (egui's own hint colour is too faint on some themes).
 pub fn hint(text: &str) -> RichText {
     RichText::new(text).color(pal().muted)

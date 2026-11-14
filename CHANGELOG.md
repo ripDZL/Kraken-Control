@@ -4,6 +4,8 @@ Notable changes to Kraken Control. Versions follow [Semantic Versioning](https:/
 
 ## Unreleased
 
+- **Cleaner pages (A75 Ultra 2025):** Performance has the same Selected keys / Whole keyboard cards as the original A75 boards; anti-shake level and Adaptive Stable moved there from Settings. Keymap, Advanced keys (with each editor in its own card), macros, Lighting (Custom colours tools in their own card) and Settings use labelled rows with a short explanation under each option.
+
 - **Macro names (A75 Ultra 2025):** give macros a name in the macro editor. Names are kept on this PC (the keyboard stores macros without names) and are included in Kraken's back-up file.
 
 - **Advanced keys and macros on FN layers (A75 Ultra 2025):** Advanced keys has a Main / FN1 / FN2 / FN3 selector; new advanced keys and macro keys go on the layer shown, like the official driver. The list shows every layer.
