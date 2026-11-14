@@ -74,8 +74,8 @@
 - [ ] Hardware (A75 Ultra 2025): log line at connect (no `macro block not readable`); record a macro, Save -> `Saved macros (verified by read-back)`, key plays it; Reload keeps it on the same M number; macro made in the official driver shows up; Win / right-hand modifiers picked by hand play correctly.
 - [x] Macro names (2026-11-13, local `dev`): `state.json` `macro_names` per board / profile / id, editor name field, list column, in back-up Kraken part. FN-layer binds done too.
 - [ ] Macros: mouse steps, repeat count (official never writes anything but 1).
-- [ ] Gen-2: light direction, light position, sleep time, live LED preview (DE).
-- [ ] Gen-2: import the official driver's config export.
+- [x] Gen-2: light direction + live LED preview done (v0.13.0); light position = type 102 only, sleep time not in the bundle (not applicable).
+- [x] Gen-2: import the official driver's config export (v0.13.0).
 
 ## Release / repo
 - [x] v0.12.0 draft release built by CI (zip + .sha256).
@@ -88,7 +88,7 @@
 
 ## UI overhaul (v0.10.0)
 - [x] Builds on Windows (v0.10 onwards; CI on every push).
-- [ ] Check both themes on every page (Settings > Appearance), window at 1180x760 and minimum 960x600.
+- [ ] Check all four themes on every page (Settings > Appearance), window at 1180x760 and minimum 960x600.
 - [x] Same keyboard size on every page, both boards (v0.10.2).
 - [x] Lighting presets, both boards (v0.10.2, cloud-tested; hardware untested).
 - [x] Gen-2 Performance: same Selected keys / Whole keyboard cards as gen-1 (2026-11-14, `dev`). Anti-shake level + Adaptive Stable moved from Settings to Whole keyboard; polling, tick rate, key locks stay in Settings.
