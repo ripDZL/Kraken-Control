@@ -8,7 +8,7 @@ Current state and handoff. History is in PROGRESS.md.
 - Website live at https://ripdzl.github.io/Kraken-Control/ from `site/` (pages.yml). Light page + app Dark Grey surfaces, teal accent. Hero demo tabs: Simulate (drag keycap, gen-2 ranges) and Your keyboard (live keydown/keyup timeline; browsers can't read depth).
 - CI (`ci.yml`, Windows, stable Rust 1.99: clippy -D warnings + tests) green on `main`.
 - Local folder `drunkdeer-rs` on the user's PC is a git working copy (branch `dev`, no upstream set; `main` tracks origin/main).
-- Branch `dev` is on GitHub (pushed 2026-11-14 with the user's OK): unreleased work, ahead of `main`. Don't push `main`, tag, release or bump the version until the user says. Commits must use `228260327+ripDZL@users.noreply.github.com` (never the account email; GitHub email privacy is on).
+- Branch `dev` is on GitHub (pushed 2026-11-14 with the user's OK) for unreleased work; merge to `main`, tag, release or version bump only when the user says. Commits must use `228260327+ripDZL@users.noreply.github.com` (never the account email; GitHub email privacy is on).
 
 ## Workflow
 - Cloud: add_repo ripDZL/Kraken-Control, clone, edit, `cargo test` / clippy (cloud cargo 1.97; CI has newer lints), push `main`. User runs `git pull`.
@@ -30,12 +30,9 @@ Current state and handoff. History is in PROGRESS.md.
 - Gen-2 DKS / Rappy Snappy / One Key Switch editors and macros (2026-11-11): user ran build a655f15 on the 2025 A75 Ultra, "everything seems okay" (not itemised, no log). Check list in TODO "Web-driver parity".
 
 ## Handoff (2026-11-14)
-- GitHub `main` = 7d577ba (gen-2 live key depth). `origin/dev` = FN-layer advanced keys (f4bcc33), macro names (9f519ab), docs (f62ce98, 112fdfd: user's hardware OK for both), then the gen-2 UI overhaul commits of 2026-11-14.
-- Also 2026-11-14 on `dev`: six themes (Dark Grey, Dark, White, Colour-blind Dark / Light, Black-Plumb) and eight OFL fonts with a Font picker (Settings › Appearance); gen-2 Keymap outlines changed keys.
-- Version on `dev` = 0.13.1 (user: "this release will be 0.13.1"); CHANGELOG section `[0.13.1] - unreleased`. Not tagged, not merged to `main`; date the section and merge / tag only when the user says.
-- Done 2026-11-14 on `dev`: gen-2 Performance "Selected keys" / "Whole keyboard" cards (anti-shake + Adaptive Stable moved there from Settings), restyled gen-2 Keymap / Advanced (+ editors, macros) / Lighting / Settings. Demo-tested only.
-- User gets it with `git pull origin dev` on `dev` (their local `dev` = 112fdfd, a fast-forward); `git branch -u origin/dev` makes plain `git pull` work afterwards.
-- Next: user checks the TODO "Hardware (A75 Ultra 2025, `dev`)" UI list; optional same restyle for gen-1 Keymap / Advanced / Lighting editors. Merge to `main` / version bump / release only when the user says.
+- 0.13.1 merged to `main` (user: "lets update", 2026-11-14): fast-forward of `dev` (FN-layer advanced keys + macro keys, macro names, gen-2 UI overhaul, six themes, eight fonts). CHANGELOG `[0.13.1] - 2026-11-14`; README screenshots advanced-gen2 / lighting-gen2 retaken. `dev` = `main`.
+- Left for the user: push tag `v0.13.1` (session's git proxy refuses tags) -> Release workflow builds the DRAFT -> paste the CHANGELOG 0.13.1 entry into "What's new" -> Publish. Local copy: `git checkout main && git pull`.
+- Open checks: TODO "Hardware (A75 Ultra 2025, `dev`)" UI list and the Windows theme / font check.
 - Parked: Windows memory creep (TODO).
 
 ## Next
