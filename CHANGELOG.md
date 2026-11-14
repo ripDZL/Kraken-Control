@@ -2,7 +2,7 @@
 
 Notable changes to Kraken Control. Versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## [0.13.1] - unreleased
 
 - **White and Colour-blind themes:** Settings › Appearance. White is a light theme. Colour-blind keeps selected, unsaved, error and advanced-key colours apart with any type of colour blindness (blue, yellow, purple and orange from the Okabe–Ito set) and marks selected keys with a thick outline. Changed keys on the Keymap page (2025 A75 Ultra) are now outlined, like on the original boards.
 
