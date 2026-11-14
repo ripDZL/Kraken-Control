@@ -88,7 +88,7 @@
 
 ## UI overhaul (v0.10.0)
 - [x] Builds on Windows (v0.10 onwards; CI on every push).
-- [ ] Check all four themes on every page (Settings > Appearance), window at 1180x760 and minimum 960x600.
+- [ ] Check all six themes on every page (Settings > Appearance), window at 1180x760 and minimum 960x600.
 - [x] Same keyboard size on every page, both boards (v0.10.2).
 - [x] Lighting presets, both boards (v0.10.2, cloud-tested; hardware untested).
 - [x] Gen-2 Performance: same Selected keys / Whole keyboard cards as gen-1 (2026-11-14, `dev`). Anti-shake level + Adaptive Stable moved from Settings to Whole keyboard; polling, tick rate, key locks stay in Settings.
@@ -97,5 +97,5 @@
 - [ ] Gen-1 Keymap / Advanced / Lighting editors: same restyle (not done; gen-1 Performance already has the cards).
 - [ ] Optional: load the user's theme JSON directly instead of the built-in Black-Plumb copy.
 - [x] White and Colour-blind themes (2026-11-14, `dev`; demo-tested on every gen-2 page + gen-1 Performance / Advanced).
-- [ ] Windows (`dev`): White and Colour-blind on every page, both boards; popups / combo boxes / tooltips readable on White; switching themes in Settings applies at once.
-- [ ] Optional: a light Colour-blind variant if wanted.
+- [x] Dark + Colour-blind Light themes, Settings order (Black-Plumb last), 8 OFL fonts with a Font picker (2026-11-14, `dev`; demo-tested every font on Performance / Advanced editor / Settings at 1180 and Custom lighting at 960, every theme on Performance or Keymap).
+- [ ] Windows (`dev`): all six themes and a few fonts on every page, both boards; popups / combo boxes / tooltips readable on the light themes; switching theme / font in Settings applies at once; font kept after restart.

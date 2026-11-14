@@ -44,6 +44,9 @@ pub struct Settings {
     /// UI theme (Dark Grey unless changed in Settings).
     #[serde(default)]
     pub theme: crate::theme::ThemeId,
+    /// UI font; `None` = the theme's own font.
+    #[serde(default)]
+    pub font: Option<crate::theme::UiFont>,
     /// How the window is drawn (takes effect at the next start).
     #[serde(default)]
     pub renderer: Renderer,

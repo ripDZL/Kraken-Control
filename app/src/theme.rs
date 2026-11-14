@@ -10,7 +10,7 @@ use eframe::egui::{
 };
 use serde::{Deserialize, Serialize};
 
-/// Built-in themes; the first is the default.
+/// Built-in themes (saved by name, so the order here doesn't matter).
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Serialize, Deserialize)]
 pub enum ThemeId {
     #[default]
@@ -20,27 +20,37 @@ pub enum ThemeId {
     /// Okabe–Ito colours that stay apart in protan-, deutan- and tritanopia,
     /// plus thicker selection outlines (test `colour_blind_roles_stay_apart`).
     ColourBlind,
+    /// Near-black surfaces, blue accent.
+    Dark,
+    /// Light version of `ColourBlind` (same test).
+    ColourBlindLight,
 }
 
 impl ThemeId {
-    pub const ALL: [ThemeId; 4] = [ThemeId::DarkGrey, ThemeId::BlackPlumb, ThemeId::White, ThemeId::ColourBlind];
+    /// Order in Settings: the default, the plain dark and light themes, the
+    /// colour-blind pair, then the user's own Black-Plumb.
+    pub const ALL: [ThemeId; 6] = [ThemeId::DarkGrey, ThemeId::Dark, ThemeId::White, ThemeId::ColourBlind, ThemeId::ColourBlindLight, ThemeId::BlackPlumb];
 
     pub fn name(self) -> &'static str {
         match self {
             ThemeId::DarkGrey => "Dark Grey",
-            ThemeId::BlackPlumb => "Black-Plumb",
+            ThemeId::Dark => "Dark",
             ThemeId::White => "White",
-            ThemeId::ColourBlind => "Colour-blind",
+            ThemeId::ColourBlind => "Colour-blind Dark",
+            ThemeId::ColourBlindLight => "Colour-blind Light",
+            ThemeId::BlackPlumb => "Black-Plumb",
         }
     }
 
     /// `--theme=` value (screenshots; not saved).
     pub fn from_arg(s: &str) -> Option<ThemeId> {
         Some(match s {
-            "grey" | "dark" => ThemeId::DarkGrey,
-            "plumb" => ThemeId::BlackPlumb,
+            "grey" => ThemeId::DarkGrey,
+            "dark" => ThemeId::Dark,
             "white" | "light" => ThemeId::White,
-            "colourblind" | "colorblind" | "cb" => ThemeId::ColourBlind,
+            "cb" | "cb-dark" => ThemeId::ColourBlind,
+            "cb-light" => ThemeId::ColourBlindLight,
+            "plumb" => ThemeId::BlackPlumb,
             _ => return None,
         })
     }
@@ -48,17 +58,93 @@ impl ThemeId {
     fn palette(self) -> &'static Palette {
         match self {
             ThemeId::DarkGrey => &DARK_GREY,
-            ThemeId::BlackPlumb => &BLACK_PLUMB,
+            ThemeId::Dark => &DARK,
             ThemeId::White => &WHITE,
             ThemeId::ColourBlind => &COLOUR_BLIND,
+            ThemeId::ColourBlindLight => &COLOUR_BLIND_LIGHT,
+            ThemeId::BlackPlumb => &BLACK_PLUMB,
         }
+    }
+
+    /// The font a theme uses unless one is picked in Settings.
+    pub fn font(self) -> UiFont {
+        self.palette().font
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+/// UI fonts, all SIL Open Font License without Reserved Font Names (the
+/// files here are subsets). Saved by name in `state.json`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum UiFont {
     Atkinson,
+    Inter,
+    Roboto,
+    OpenSans,
+    NotoSans,
+    FiraSans,
+    Figtree,
     JetBrainsMono,
+}
+
+impl UiFont {
+    pub const ALL: [UiFont; 8] =
+        [UiFont::Atkinson, UiFont::Inter, UiFont::Roboto, UiFont::OpenSans, UiFont::NotoSans, UiFont::FiraSans, UiFont::Figtree, UiFont::JetBrainsMono];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            UiFont::Atkinson => "Atkinson Hyperlegible Next",
+            UiFont::Inter => "Inter",
+            UiFont::Roboto => "Roboto",
+            UiFont::OpenSans => "Open Sans",
+            UiFont::NotoSans => "Noto Sans",
+            UiFont::FiraSans => "Fira Sans",
+            UiFont::Figtree => "Figtree",
+            UiFont::JetBrainsMono => "JetBrains Mono",
+        }
+    }
+
+    /// `--font=` value (screenshots; not saved).
+    pub fn from_arg(s: &str) -> Option<UiFont> {
+        UiFont::ALL.into_iter().find(|f| f.name().replace(' ', "").eq_ignore_ascii_case(s) || format!("{f:?}").eq_ignore_ascii_case(s))
+            .or(match s {
+                "atkinson" => Some(UiFont::Atkinson),
+                "jetbrains" | "mono" => Some(UiFont::JetBrainsMono),
+                _ => None,
+            })
+    }
+
+    /// Regular and semibold (bold for JetBrains Mono) files.
+    fn data(self) -> (&'static [u8], &'static [u8]) {
+        macro_rules! pair {
+            ($r:literal, $b:literal) => {
+                (include_bytes!(concat!("../res/fonts/", $r)), include_bytes!(concat!("../res/fonts/", $b)))
+            };
+        }
+        match self {
+            UiFont::Atkinson => pair!("AtkinsonHyperlegibleNext-Regular.ttf", "AtkinsonHyperlegibleNext-SemiBold.ttf"),
+            UiFont::Inter => pair!("Inter-Regular.ttf", "Inter-SemiBold.ttf"),
+            UiFont::Roboto => pair!("Roboto-Regular.ttf", "Roboto-SemiBold.ttf"),
+            UiFont::OpenSans => pair!("OpenSans-Regular.ttf", "OpenSans-SemiBold.ttf"),
+            UiFont::NotoSans => pair!("NotoSans-Regular.ttf", "NotoSans-SemiBold.ttf"),
+            UiFont::FiraSans => pair!("FiraSans-Regular.ttf", "FiraSans-SemiBold.ttf"),
+            UiFont::Figtree => pair!("Figtree-Regular.ttf", "Figtree-SemiBold.ttf"),
+            UiFont::JetBrainsMono => pair!("JetBrainsMono-Regular.ttf", "JetBrainsMono-Bold.ttf"),
+        }
+    }
+
+    /// Body, small and heading sizes. Sans fonts are sized so a line of UI text
+    /// is no wider than in Atkinson at 14.5 (test `fonts_fit_the_same_space`),
+    /// so every layout that fits in one font fits in all of them.
+    /// JetBrains Mono is wider per letter and keeps its readable 13.5.
+    fn sizes(self) -> (f32, f32, f32) {
+        match self {
+            UiFont::Atkinson => (14.5, 12.5, 21.0),
+            UiFont::Inter => (13.0, 11.5, 19.0),
+            UiFont::Roboto | UiFont::FiraSans | UiFont::Figtree => (14.0, 12.0, 20.5),
+            UiFont::OpenSans | UiFont::NotoSans => (13.5, 11.5, 19.5),
+            UiFont::JetBrainsMono => (13.5, 12.0, 20.0),
+        }
+    }
 }
 
 /// Colour roles.
@@ -237,7 +323,7 @@ pub const WHITE: Palette = Palette {
     tag_width: 2.0,
     dark: false,
     radius: 6,
-    font: UiFont::Atkinson,
+    font: UiFont::Roboto,
 };
 
 /// Dark theme for colour-blind users. Roles use the Okabe–Ito set (sky blue,
@@ -283,18 +369,101 @@ pub const COLOUR_BLIND: Palette = Palette {
     font: UiFont::Atkinson,
 };
 
+/// Near-black surfaces with a blue accent.
+pub const DARK: Palette = Palette {
+    bg: hex(0x0F1012),
+    chrome: hex(0x0A0A0C),
+    card: hex(0x17181B),
+    card_edge: hex(0x232529),
+    line: hex(0x2A2C31),
+    input: hex(0x25272C),
+    button: hex(0x2A2D32),
+    button_hover: hex(0x363940),
+    button_text: hex(0xEEF0F2),
+    accent: hex(0x6EA8FE),
+    accent_hover: hex(0x8DBBFF),
+    on_accent: hex(0x0A1220),
+    nav_active: hex(0x1C2D4A),
+    nav_active_text: hex(0xB3CEFF),
+    text: hex(0xF3F4F6),
+    text_body: hex(0xDFE1E5),
+    muted: hex(0xA7ACB4),
+    disabled: hex(0x7A7F87),
+    unsaved: hex(0xF2B04A),
+    error: hex(0xF47C6F),
+    link: hex(0x8DBBFF),
+    plate: hex(0x0B0C0E),
+    key_skirt: hex(0x1D1F23),
+    key_top: hex(0x2B2D32),
+    key_hover: hex(0x34373D),
+    key_selected: hex(0x1A2B45),
+    key_empty: hex(0x151619),
+    key_legend: hex(0xDCDFE3),
+    key_tag: hex(0x6EA8FE),
+    travel: TRAVEL_ON_DARK,
+    select_width: 2.0,
+    tag_width: 2.0,
+    dark: true,
+    radius: 6,
+    font: UiFont::Inter,
+};
+
+/// Light version of [`COLOUR_BLIND`]: on white the role colours must be dark
+/// enough for text, so they were picked by searching blue / amber / crimson /
+/// purple shades for the widest gap under simulated colour blindness.
+pub const COLOUR_BLIND_LIGHT: Palette = Palette {
+    bg: hex(0xEEF0F3),
+    chrome: hex(0xFFFFFF),
+    card: hex(0xFFFFFF),
+    card_edge: hex(0xDADDE2),
+    line: hex(0xE1E4E8),
+    input: hex(0xE6E8EC),
+    button: hex(0xE4E7EB),
+    button_hover: hex(0xD7DBE0),
+    button_text: hex(0x16181B),
+    accent: hex(0x0E6A9B),
+    accent_hover: hex(0x0B5A84),
+    on_accent: hex(0xFFFFFF),
+    nav_active: hex(0x0E6A9B),
+    nav_active_text: hex(0xFFFFFF),
+    text: hex(0x14161A),
+    text_body: hex(0x272A30),
+    muted: hex(0x585E68),
+    disabled: hex(0x7E848D),
+    unsaved: hex(0x915C08),
+    error: hex(0x850E2C),
+    link: hex(0x0B5A84),
+    plate: hex(0xCDD2D9),
+    key_skirt: hex(0xB9BFC8),
+    key_top: hex(0xFBFCFD),
+    key_hover: hex(0xEEF1F4),
+    key_selected: hex(0xD3E6F3),
+    key_empty: hex(0xE3E6EA),
+    key_legend: hex(0x1E2126),
+    key_tag: hex(0x442878),
+    travel: [hex(0x1F5FAE), hex(0xA34A00)],
+    select_width: 3.5,
+    tag_width: 1.5,
+    dark: false,
+    radius: 6,
+    font: UiFont::Atkinson,
+};
+
 /// Short = light blue, deep = orange (blue / orange stays apart for colour-blind users too).
 const TRAVEL_ON_DARK: [Color32; 2] = [hex(0x8CC3FF), hex(0xFFA05A)];
 
 static CURRENT: AtomicU8 = AtomicU8::new(0);
+static CURRENT_FONT: AtomicU8 = AtomicU8::new(0);
 
 pub fn current() -> ThemeId {
-    match CURRENT.load(Ordering::Relaxed) {
-        1 => ThemeId::BlackPlumb,
-        2 => ThemeId::White,
-        3 => ThemeId::ColourBlind,
-        _ => ThemeId::DarkGrey,
-    }
+    let v = CURRENT.load(Ordering::Relaxed);
+    ThemeId::ALL.into_iter().find(|t| *t as u8 == v).unwrap_or_default()
+}
+
+/// Font in use (the picked one, else the theme's).
+pub fn current_font() -> UiFont {
+    let v = CURRENT_FONT.load(Ordering::Relaxed);
+    UiFont::ALL.into_iter().find(|f| *f as u8 == v).unwrap_or(UiFont::Atkinson)
 }
 
 /// Active palette.
@@ -302,21 +471,21 @@ pub fn pal() -> &'static Palette {
     current().palette()
 }
 
-/// Switches fonts, sizes and colours (cheap enough to call on a theme change, not every frame).
-pub fn apply(ctx: &egui::Context, id: ThemeId) {
+/// Switches fonts, sizes and colours (cheap enough to call on a theme or font
+/// change, not every frame). `font`: the one picked in Settings, `None` = the theme's.
+pub fn apply(ctx: &egui::Context, id: ThemeId, font: Option<UiFont>) {
+    let font = font.unwrap_or(id.font());
     CURRENT.store(id as u8, Ordering::Relaxed);
+    CURRENT_FONT.store(font as u8, Ordering::Relaxed);
     let p = id.palette();
-    ctx.set_fonts(fonts(p));
+    ctx.set_fonts(fonts(font));
     // One style slot for every theme (light ones included), so a light or dark
     // Windows theme never swaps egui's style under us.
     ctx.set_theme(egui::ThemePreference::Dark);
-    ctx.set_style_of(egui::Theme::Dark, style(p));
+    ctx.set_style_of(egui::Theme::Dark, style(p, font));
 }
 
-static ATKINSON: &[u8] = include_bytes!("../res/fonts/AtkinsonHyperlegibleNext-Regular.ttf");
-static ATKINSON_BOLD: &[u8] = include_bytes!("../res/fonts/AtkinsonHyperlegibleNext-SemiBold.ttf");
 static JB_MONO: &[u8] = include_bytes!("../res/fonts/JetBrainsMono-Regular.ttf");
-static JB_MONO_BOLD: &[u8] = include_bytes!("../res/fonts/JetBrainsMono-Bold.ttf");
 /// ← ↑ → ↓ from Hack and ★ from emoji-icon-font (subsets; egui's own fonts are not built in).
 static ARROWS: &[u8] = include_bytes!("../res/fonts/KrakenArrows.ttf");
 static STAR: &[u8] = include_bytes!("../res/fonts/KrakenStar.ttf");
@@ -326,12 +495,9 @@ pub fn bold() -> FontFamily {
     FontFamily::Name("bold".into())
 }
 
-fn fonts(p: &Palette) -> FontDefinitions {
+fn fonts(font: UiFont) -> FontDefinitions {
     let mut f = FontDefinitions::default();
-    let (reg, bold_data): (&'static [u8], &'static [u8]) = match p.font {
-        UiFont::Atkinson => (ATKINSON, ATKINSON_BOLD),
-        UiFont::JetBrainsMono => (JB_MONO, JB_MONO_BOLD),
-    };
+    let (reg, bold_data) = font.data();
     f.font_data.insert("kc-regular".into(), Arc::new(FontData::from_static(reg)));
     f.font_data.insert("kc-bold".into(), Arc::new(FontData::from_static(bold_data)));
     f.font_data.insert("kc-mono".into(), Arc::new(FontData::from_static(JB_MONO)));
@@ -345,12 +511,9 @@ fn fonts(p: &Palette) -> FontDefinitions {
     f
 }
 
-fn style(p: &Palette) -> egui::Style {
+fn style(p: &Palette, font: UiFont) -> egui::Style {
     let mut s = egui::Style::default();
-    let (body, small, head) = match p.font {
-        UiFont::Atkinson => (14.5, 12.5, 21.0),
-        UiFont::JetBrainsMono => (13.5, 12.0, 20.0),
-    };
+    let (body, small, head) = font.sizes();
     s.text_styles = [
         (TextStyle::Small, FontId::proportional(small)),
         (TextStyle::Body, FontId::proportional(body)),
@@ -763,9 +926,11 @@ pub fn key_unit(ui: &Ui) -> f32 {
     (ui.available_width() / 16.5).floor().clamp(30.0, 64.0)
 }
 
-/// Font size on keycaps, rounded to whole pixels for the same reason.
+/// Font size on keycaps, rounded to whole pixels for the same reason. Scaled
+/// like the body text, so key legends take the same room in every font.
 pub fn key_font(unit: f32, factor: f32, min: f32, max: f32) -> f32 {
-    (unit * factor).round().clamp(min, max)
+    let s = current_font().sizes().0 / UiFont::Atkinson.sizes().0;
+    (unit * factor * s).round().clamp((min * s).round(), (max * s).round())
 }
 
 /// Draws one line of key text only where it fits inside `space` (never on top
@@ -1043,28 +1208,131 @@ mod tests {
                 0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
             ]
         };
-        let p = ThemeId::ColourBlind.palette();
-        let roles = [("accent", p.accent), ("unsaved", p.unsaved), ("error", p.error), ("key_tag", p.key_tag)];
-        let mut worst = (f64::MAX, String::new());
-        for (sim, m) in SIM {
-            let seen = |c: Color32| {
-                let v = [lin(c.r()), lin(c.g()), lin(c.b())];
-                oklab([0, 1, 2].map(|i| m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2]))
-            };
-            for (i, (a, ca)) in roles.iter().enumerate() {
-                for (b, cb) in &roles[i + 1..] {
-                    let (x, y) = (seen(*ca), seen(*cb));
-                    let d = ((x[0] - y[0]).powi(2) + (x[1] - y[1]).powi(2) + (x[2] - y[2]).powi(2)).sqrt();
-                    if d < worst.0 {
-                        worst = (d, format!("{a} / {b} in {sim}"));
+        for id in [ThemeId::ColourBlind, ThemeId::ColourBlindLight] {
+            let p = id.palette();
+            let roles = [("accent", p.accent), ("unsaved", p.unsaved), ("error", p.error), ("key_tag", p.key_tag)];
+            let mut worst = (f64::MAX, String::new());
+            for (sim, m) in SIM {
+                let seen = |c: Color32| {
+                    let v = [lin(c.r()), lin(c.g()), lin(c.b())];
+                    oklab([0, 1, 2].map(|i| m[i][0] * v[0] + m[i][1] * v[1] + m[i][2] * v[2]))
+                };
+                for (i, (a, ca)) in roles.iter().enumerate() {
+                    for (b, cb) in &roles[i + 1..] {
+                        let (x, y) = (seen(*ca), seen(*cb));
+                        let d = ((x[0] - y[0]).powi(2) + (x[1] - y[1]).powi(2) + (x[2] - y[2]).powi(2)).sqrt();
+                        if d < worst.0 {
+                            worst = (d, format!("{a} / {b} in {sim}"));
+                        }
                     }
                 }
             }
+            // 0.09 OKLab is a clearly visible difference (just-noticeable is about 0.02).
+            assert!(worst.0 >= 0.09, "{}: {}: {:.3}", id.name(), worst.1, worst.0);
+            // Selection never relies on colour alone.
+            assert!(p.select_width >= p.tag_width + 1.5, "{}", id.name());
         }
-        // 0.09 OKLab is a clearly visible difference (just-noticeable is about 0.02).
-        assert!(worst.0 >= 0.09, "{}: {:.3}", worst.1, worst.0);
-        // Selection never relies on colour alone.
-        assert!(p.select_width >= p.tag_width + 1.5);
+    }
+
+    /// Every character in the UI's string literals (app and dd-proto: labels,
+    /// messages) has a glyph in every font, regular and bold, or in the symbol
+    /// fallbacks, so no theme / font shows empty boxes.
+    #[test]
+    fn fonts_cover_ui_text() {
+        use ab_glyph::Font;
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let mut used = std::collections::BTreeSet::new();
+        for dir in [root.join("src"), root.join("../crates/dd-proto/src")] {
+            for entry in std::fs::read_dir(&dir).unwrap() {
+                let path = entry.unwrap().path();
+                if path.extension().is_some_and(|e| e == "rs") {
+                    used.extend(literal_chars(&std::fs::read_to_string(&path).unwrap()));
+                }
+            }
+        }
+        used.extend((' '..='~').collect::<Vec<_>>());
+        let has = |data: &[u8], c: char| ab_glyph::FontRef::try_from_slice(data).unwrap().glyph_id(c).0 != 0;
+        let mut missing = Vec::new();
+        for font in UiFont::ALL {
+            let (reg, bold) = font.data();
+            for (weight, data) in [("regular", reg), ("bold", bold)] {
+                let gaps: String = used.iter().filter(|c| !c.is_control() && !has(data, **c) && !has(ARROWS, **c) && !has(STAR, **c)).collect();
+                if !gaps.is_empty() {
+                    missing.push(format!("{} {weight}: {gaps:?}", font.name()));
+                }
+            }
+        }
+        assert!(missing.is_empty(), "{missing:#?}");
+    }
+
+    /// Characters inside string and char literals (comments skipped).
+    fn literal_chars(src: &str) -> Vec<char> {
+        let mut out = Vec::new();
+        let cs: Vec<char> = src.chars().collect();
+        let mut i = 0;
+        while i < cs.len() {
+            match cs[i] {
+                '/' if cs.get(i + 1) == Some(&'/') => {
+                    while i < cs.len() && cs[i] != '\n' {
+                        i += 1;
+                    }
+                }
+                '/' if cs.get(i + 1) == Some(&'*') => {
+                    i += 2;
+                    while i + 1 < cs.len() && !(cs[i] == '*' && cs[i + 1] == '/') {
+                        i += 1;
+                    }
+                    i += 1;
+                }
+                '"' => {
+                    i += 1;
+                    while i < cs.len() && cs[i] != '"' {
+                        if cs[i] == '\\' {
+                            i += 1;
+                        } else {
+                            out.push(cs[i]);
+                        }
+                        i += 1;
+                    }
+                }
+                // 'x' (not a lifetime): the char between the quotes.
+                '\'' if cs.get(i + 2) == Some(&'\'') && cs[i + 1] != '\\' => {
+                    out.push(cs[i + 1]);
+                    i += 2;
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+        out
+    }
+
+    /// A line of UI text takes no more room in any sans font than in Atkinson
+    /// (the font the layouts were made with), and not much less; JetBrains Mono
+    /// is allowed up to a quarter wider (it was checked page by page).
+    #[test]
+    fn fonts_fit_the_same_space() {
+        use ab_glyph::Font;
+        const SAMPLE: &str = "Actuation point. How far down the key goes before it registers; Save to keyboard 0.20 mm (Rapid Trigger) Whole keyboard WASD";
+        let width = |data: &[u8], size: f32| {
+            let f = ab_glyph::FontRef::try_from_slice(data).unwrap();
+            let upm = f.units_per_em().unwrap();
+            SAMPLE.chars().map(|c| f.h_advance_unscaled(f.glyph_id(c))).sum::<f32>() / upm * size
+        };
+        let (ref_reg, ref_bold) = UiFont::Atkinson.data();
+        let ref_size = UiFont::Atkinson.sizes().0;
+        let (r0, b0) = (width(ref_reg, ref_size), width(ref_bold, ref_size));
+        let mut bad = Vec::new();
+        for font in UiFont::ALL {
+            let (reg, bold) = font.data();
+            let size = font.sizes().0;
+            let (r, b) = (width(reg, size) / r0, width(bold, size) / b0);
+            let max = if font == UiFont::JetBrainsMono { 1.25 } else { 1.02 };
+            if !(0.94..=max).contains(&r) || b > max {
+                bad.push(format!("{}: regular {r:.3}, bold {b:.3} (max {max})", font.name()));
+            }
+        }
+        assert!(bad.is_empty(), "{bad:#?}");
     }
 
     /// Text on any per-key lighting colour stays readable.

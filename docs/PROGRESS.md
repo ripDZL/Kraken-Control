@@ -179,3 +179,11 @@
 - ui2 Keymap: changed keys outlined (non-colour cue, as gen-1). UI text no longer names colours ("teal" / "amber"). Swatch outlines from the palette (selected = text colour, others = disabled grey) so white swatches show on White.
 - Settings › Appearance: four themes (wrapped row), new help text.
 - Verified: tests (app 19 incl. both theme tests), clippy both configs; demo screenshots White + Colour-blind (gen-2 Performance / Keymap / Advanced + SOCD editor / Custom lighting / Settings, live depth on White; gen-1 Performance / Advanced).
+
+## 2026-11-14 (Dark + Colour-blind Light themes, fonts, branch `dev`)
+- `ThemeId::Dark`, `ThemeId::ColourBlindLight`; `ALL` = Dark Grey, Dark, White, Colour-blind Dark, Colour-blind Light, Black-Plumb (names changed: "Colour-blind" -> "Colour-blind Dark"). `current()` maps the stored discriminant through `ALL`. `--theme=` values: grey, dark (now the Dark theme), white, cb, cb-light, plumb.
+- CB Light role colours from an OKLab search (blue / amber / crimson / purple hue bands, contrast >= 4.5 on white and light keycaps, max of min CVD distance = 0.124); `colour_blind_roles_stay_apart` covers both CB themes.
+- `UiFont` (8 fonts, serde by name) with `data()` (include_bytes pairs), `sizes()`, `from_arg`; `Palette.font` = theme default; `settings.font: Option<UiFont>`, back-up `Kraken.font`; `theme::apply(ctx, theme, font)`, `current_font()`; `key_font` scales with the font. Settings › Appearance: theme chips wrap, Font combo ("Theme's font (…)" + 8).
+- Fonts: google/fonts variable TTFs -> static 400 / 600 instances -> Latin subsets with `tools/build_fonts.py`. Dropped IBM Plex Sans, Source Sans 3, Lexend (Reserved Font Names). Licences `OFL-<Font>.txt` (package.ps1 copies `*.txt`).
+- Gen-1 knob editor used "●" (no font had it -> empty box); now "•". Caught by the new `fonts_cover_ui_text` test.
+- Verified: tests (app 21), clippy both configs; screenshots of all 8 fonts (Performance two-column, Mod Tap editor, Settings at 1180; Custom lighting at 960; JB Mono Settings at 960) and Dark / CB Light / White (+ open combo) themes. Release exe (Linux) 4.24 -> 4.54 MB.

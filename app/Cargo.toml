@@ -47,3 +47,7 @@ softbuffer = { version = "=0.4.6", default-features = false }
 [target.'cfg(not(windows))'.dependencies]
 eframe = { version = "=0.31.1", default-features = false, features = ["glow", "x11"] }
 softbuffer = { version = "=0.4.6", default-features = false, features = ["x11", "x11-dlopen"] }
+
+[dev-dependencies]
+# Font tests (theme.rs): glyph coverage and widths. Same crate egui renders with.
+ab_glyph = "0.2"

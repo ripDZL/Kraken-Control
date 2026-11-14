@@ -60,10 +60,12 @@ product ID.
   anything reaches the keyboard.
 - Import profiles exported by the official 2025 web driver (key travel,
   keymap, advanced keys).
-- Four themes: Dark Grey (default), Black-Plumb, White and Colour-blind, all
-  checked for WCAG text contrast. Colour-blind uses Okabe–Ito colours checked
-  against simulated protanopia, deuteranopia and tritanopia, and marks
-  selected keys with a thick outline so nothing depends on colour alone.
+- Six themes: Dark Grey (default), Dark, White, Colour-blind Dark,
+  Colour-blind Light and Black-Plumb, all checked for WCAG text contrast. The
+  colour-blind themes are checked against simulated protanopia, deuteranopia
+  and tritanopia, and mark selected keys with a thick outline so nothing
+  depends on colour alone.
+- Eight free (SIL OFL) fonts to choose from, each sized to take the same room.
 - Portable mode: put a file named `portable` next to the exe and settings
   stay in a `data` folder beside it.
 

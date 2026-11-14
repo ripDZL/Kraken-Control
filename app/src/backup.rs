@@ -113,6 +113,9 @@ pub struct Gen2Key {
 pub struct Kraken {
     #[serde(default)]
     pub theme: ThemeId,
+    /// `None` = the theme's own font.
+    #[serde(default)]
+    pub font: Option<crate::theme::UiFont>,
     #[serde(default)]
     pub renderer: Renderer,
     #[serde(default)]
@@ -134,7 +137,10 @@ impl Kraken {
     pub fn summary(&self) -> String {
         let n = |count: usize, one: &str, many: &str| format!("{count} {}", if count == 1 { one } else { many });
         [
-            format!("{} theme", self.theme.name()),
+            match self.font {
+                Some(f) => format!("{} theme, {} font", self.theme.name(), f.name()),
+                None => format!("{} theme", self.theme.name()),
+            },
             n(self.light_presets.len() + self.light_presets2.len(), "lighting preset", "lighting presets"),
             n(self.profiles.len(), "saved profile", "saved profiles"),
             n(self.agent.rules.len(), "app rule", "app rules"),

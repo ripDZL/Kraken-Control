@@ -31,7 +31,7 @@ Current state and handoff. History is in PROGRESS.md.
 
 ## Handoff (2026-11-14)
 - GitHub `main` = 7d577ba (gen-2 live key depth). `origin/dev` = FN-layer advanced keys (f4bcc33), macro names (9f519ab), docs (f62ce98, 112fdfd: user's hardware OK for both), then the gen-2 UI overhaul commits of 2026-11-14.
-- Also 2026-11-14 on `dev`: White and Colour-blind themes (Settings › Appearance); gen-2 Keymap outlines changed keys.
+- Also 2026-11-14 on `dev`: six themes (Dark Grey, Dark, White, Colour-blind Dark / Light, Black-Plumb) and eight OFL fonts with a Font picker (Settings › Appearance); gen-2 Keymap outlines changed keys.
 - Version on `dev` = 0.13.1 (user: "this release will be 0.13.1"); CHANGELOG section `[0.13.1] - unreleased`. Not tagged, not merged to `main`; date the section and merge / tag only when the user says.
 - Done 2026-11-14 on `dev`: gen-2 Performance "Selected keys" / "Whole keyboard" cards (anti-shake + Adaptive Stable moved there from Settings), restyled gen-2 Keymap / Advanced (+ editors, macros) / Lighting / Settings. Demo-tested only.
 - User gets it with `git pull origin dev` on `dev` (their local `dev` = 112fdfd, a fast-forward); `git branch -u origin/dev` makes plain `git pull` work afterwards.

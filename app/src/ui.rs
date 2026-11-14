@@ -16,7 +16,7 @@ use crate::backup;
 use crate::device::{self, Cmd, Event, Snapshot, TravelSet, Values};
 use crate::store::{self, AgentConfig, AppRule, LightPreset1, Profile, Store};
 use crate::sys;
-use crate::theme::{self, pal, Cap, Page, PresetAction, ThemeId};
+use crate::theme::{self, pal, Cap, Page, PresetAction, ThemeId, UiFont};
 
 /// Which board family the window shows.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -134,8 +134,10 @@ impl App {
         let demo_gen2 = std::env::args().any(|a| a == "--demo-gen2");
         let gen2 = crate::ui2::Gen2Panel::new(egui_ctx.clone(), demo_gen2);
         let store = Store::load();
+        // `--theme=` / `--font=` (screenshots) are not saved.
         let theme_id = std::env::args().find_map(|a| a.strip_prefix("--theme=").and_then(ThemeId::from_arg)).unwrap_or(store.settings.theme);
-        theme::apply(egui_ctx, theme_id);
+        let font = std::env::args().find_map(|a| a.strip_prefix("--font=").and_then(UiFont::from_arg)).or(store.settings.font);
+        theme::apply(egui_ctx, theme_id, font);
         crate::log::set_packet_logging(store.settings.log_packets);
         let model = Model::A75Master;
         let args: Vec<String> = std::env::args().collect();
@@ -1489,7 +1491,7 @@ impl App {
             ui.strong("Knob");
             for e in KnobEvent::ALL {
                 let mapped = self.knob[e.index()].is_some();
-                let text = if mapped { format!("{} ●", e.name()) } else { e.name().to_string() };
+                let text = if mapped { format!("{} •", e.name()) } else { e.name().to_string() };
                 if ui.selectable_label(e == ev, text).clicked() {
                     self.knob_event = Some(e);
                 }
@@ -1865,7 +1867,7 @@ impl App {
             theme::setting(
                 ui,
                 "Theme",
-                "Dark Grey is the default. Black-Plumb uses plum, black and green; White is light. Colour-blind keeps every state apart with any type of colour blindness and marks selected keys with a thick outline.",
+                "Dark Grey is the default. The Colour-blind themes keep every state apart with any type of colour blindness and mark selected keys with a thick outline.",
                 |ui| {
                     ui.horizontal_wrapped(|ui| {
                         for t in ThemeId::ALL {
@@ -1874,10 +1876,22 @@ impl App {
                     });
                 },
             );
-            if id != theme::current() {
-                theme::apply(ui.ctx(), id);
+            let mut font = self.store.settings.font;
+            theme::setting(ui, "Font", "Free, open-licensed fonts, each sized to fit the same space. Theme's font follows the theme.", |ui| {
+                let theme_font = id.font().name();
+                let text = font.map_or(format!("Theme's font ({theme_font})"), |f| f.name().to_string());
+                egui::ComboBox::from_id_salt("ui_font").width(240.0).selected_text(text).show_ui(ui, |ui| {
+                    ui.selectable_value(&mut font, None, format!("Theme's font ({theme_font})"));
+                    for f in UiFont::ALL {
+                        ui.selectable_value(&mut font, Some(f), f.name());
+                    }
+                });
+            });
+            if id != theme::current() || font != self.store.settings.font {
+                theme::apply(ui.ctx(), id, font);
                 ui.ctx().request_repaint();
                 self.store.settings.theme = id;
+                self.store.settings.font = font;
                 self.persist();
             }
         });
@@ -2249,6 +2263,7 @@ impl App {
         };
         let kraken = backup::Kraken {
             theme: self.store.settings.theme,
+            font: self.store.settings.font,
             renderer: self.store.settings.renderer,
             light_presets: self.store.light_presets.clone(),
             light_presets2: self.store.light_presets2.clone(),
@@ -2342,10 +2357,11 @@ impl App {
 
     /// Kraken settings from a back-up: same-named presets / profiles / app rules are replaced.
     fn merge_kraken(&mut self, ctx: &egui::Context, k: backup::Kraken) {
-        if k.theme != theme::current() {
-            theme::apply(ctx, k.theme);
+        if k.theme != theme::current() || k.font != self.store.settings.font {
+            theme::apply(ctx, k.theme, k.font);
         }
         self.store.settings.theme = k.theme;
+        self.store.settings.font = k.font;
         self.store.settings.renderer = k.renderer;
         for p in k.light_presets {
             match self.store.light_presets.iter_mut().find(|q| q.model == p.model && q.name == p.name) {
